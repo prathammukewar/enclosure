@@ -40,6 +40,7 @@
   </a>
   <nav class="nav" aria-label="Main">
     <a href="#play" data-nav="play">Play</a>
+    <a href="#puzzles" data-nav="puzzles">Puzzles</a>
     <a href="#learn" data-nav="learn">Learn</a>
     <a href="#rules" data-nav="rules">Rules</a>
   </nav>
@@ -63,6 +64,13 @@
         <button class="btn big" data-start="online">Play a friend online</button>
       </div>
       <p class="hero-sub">New here? <a href="#learn">Learn the game in a few minutes</a> or read <a href="#rules">the rules</a>.</p>
+      <div class="resume card" id="daily-card">
+        <div>
+          <strong>Puzzle of the day</strong>
+          <span id="daily-text"></span>
+        </div>
+        <a class="btn" id="btn-daily" href="#puzzles">Solve it</a>
+      </div>
       <div class="resume card" id="resume-card" hidden>
         <div>
           <strong>Game in progress</strong>
@@ -170,6 +178,40 @@
         <div class="share-row"><input id="share-link" readonly aria-label="Game link"><button class="btn" id="btn-copy-link">Copy</button></div>
         <div class="share-row"><button class="btn" id="btn-download">Download record</button><button class="btn" id="btn-image">Save picture</button></div>
       </div>
+    </aside>
+  </div>
+</section>
+
+<!-- PUZZLES -->
+<section class="view" id="view-puzzles" data-title="Enclosure puzzles">
+  <div class="pz-layout">
+    <div class="pz-main card">
+      <div class="pz-head">
+        <div><h2 id="pz-title">Puzzle</h2> <span class="pz-meta" id="pz-meta"></span></div>
+        <div class="pz-nav">
+          <button class="icon-btn" id="pz-prev" aria-label="Previous puzzle" title="Previous puzzle"><svg viewBox="0 0 24 24"><path d="M15 6l-6 6 6 6"/></svg></button>
+          <button class="icon-btn" id="pz-next" aria-label="Next puzzle" title="Next puzzle"><svg viewBox="0 0 24 24"><path d="M9 6l6 6-6 6"/></svg></button>
+        </div>
+      </div>
+      <div class="pz-body">
+        <div class="pz-board-wrap"><div class="board" id="pz-board"></div></div>
+        <div class="pz-side">
+          <p class="lesson-task" id="pz-task"></p>
+          <div class="pz-swing"><b id="pz-swing"></b><span id="pz-edges"></span></div>
+          <p class="lesson-feedback" id="pz-feedback" role="status" aria-live="polite"></p>
+          <p class="small" id="pz-best"></p>
+          <div class="lesson-actions">
+            <button class="btn" id="pz-reset">Try again</button>
+            <button class="btn" id="pz-show">Show me</button>
+          </div>
+        </div>
+      </div>
+    </div>
+    <aside class="pz-aside card">
+      <h3>All puzzles</h3>
+      <p class="small" id="pz-progress"></p>
+      <div class="pz-list" id="pz-list"></div>
+      <p class="small">More dots means harder. Each best turn was found by trying every possible pair of edges.</p>
     </aside>
   </div>
 </section>

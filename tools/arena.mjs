@@ -29,7 +29,12 @@ if (isMainThread) {
 } else {
   const { Game, BLUE } = await import('../js/engine.js');
   const { planTurn, LEVELS } = await import('../js/ai.js');
-  const parse = (s) => (s.startsWith('{') ? { ...LEVELS.hard, ...JSON.parse(s) } : s);
+  // 'hard', '{"rho":0.9}' (hard with changes) or 'medium:{"budget":0}'.
+  const parse = (s) => {
+    const m = s.match(/^(easy|medium|hard):(\{.*\})$/);
+    if (m) return { ...LEVELS[m[1]], ...JSON.parse(m[2]) };
+    return s.startsWith('{') ? { ...LEVELS.hard, ...JSON.parse(s) } : s;
+  };
   const A = parse(workerData.a), B = parse(workerData.b);
   parentPort.on('message', (i) => {
     const g = new Game();

@@ -11,6 +11,7 @@ A browser version of Enclosure, a two-player strategy game on a 19 by 19 grid. Y
 - Play the computer on Easy, Medium or Hard, a friend on the same screen, or a friend online by sending them a link.
 - Turn on a clock, including the 1 minute plus 15 seconds setting used in tournament play.
 - Learn the game in eleven short interactive lessons, or read the full rules with diagrams.
+- Solve puzzles: find the turn that fences in the most area and opens the most of your opponent's. Every best answer was found by trying every possible pair of edges, and there's a puzzle of the day on the home page.
 - See what an edge will do before you place it: which enemy edge it breaks, how much area it fences in, or why it isn't allowed.
 - Use undo and hints against the computer, and switch on a view that marks your walls the opponent can reach and enemy walls you can break.
 - Follow the score chart and move list, step through any game in review, share a link that replays it, save a picture, or download the record.
@@ -40,6 +41,7 @@ Plain HTML, CSS and JavaScript modules, with no build step and no dependencies a
 | `js/play.js` | The play screen: game flow, clocks, undo, hints, review, sharing |
 | `js/online.js` | Online games over WebRTC using PeerJS |
 | `js/lessons.js`, `js/learn.js` | The tutorial |
+| `js/puzzles.js`, `js/puzzledata.js` | Puzzles, mined from computer games with `tools/mine.mjs` |
 
 Area is measured exactly. Crossings between a player's own edges split them into pieces, the faces of that drawing are traced, and every face with positive area counts. A region that sits inside another region of the same player counts once.
 

@@ -93,7 +93,7 @@ export function roundArea(a) {
 // each input segment the area that would be lost if only it were removed.
 export function analyzeArea(segs, wantLoss = false) {
   const n = segs.length;
-  const empty = { area: 0, faces: [], loss: wantLoss ? new Float64Array(n) : null };
+  const empty = { area: 0, faces: [], loss: wantLoss ? new Float64Array(n) : null, opens: wantLoss ? Array.from({ length: n }, () => []) : null };
   if (n < 2) return empty;
 
   // 1. Split points along every segment (parameter t in [0, 1]).
@@ -241,15 +241,20 @@ export function analyzeArea(segs, wantLoss = false) {
   for (const c of comps) if (!nested.has(c)) area += compEnclosed.get(c);
 
   const faces = [];
+  const faceIndex = new Int32Array(faceArea.length).fill(-1);
   for (let f = 0; f < faceArea.length; f++) {
-    if (faceArea[f] > EPS) faces.push({ pts: facePts[f], area: faceArea[f], nested: nested.has(faceComp[f]) });
+    if (faceArea[f] > EPS) {
+      faceIndex[f] = faces.length;
+      faces.push({ pts: facePts[f], area: faceArea[f], nested: nested.has(faceComp[f]) });
+    }
   }
 
   // 7. Loss if one segment is removed: merge the faces on both sides of its
   // pieces; a merged group that reaches the outside loses its bounded faces.
-  let loss = null;
+  let loss = null, opens = null;
   if (wantLoss) {
     loss = new Float64Array(n);
+    opens = new Array(n);
     for (let i = 0; i < n; i++) {
       const subs = segSubEdges[i];
       if (!subs.length) continue;
@@ -268,17 +273,22 @@ export function analyzeArea(segs, wantLoss = false) {
         groups.get(r).push(f);
       }
       let lost = 0;
+      const list = [];
       for (const fs of groups.values()) {
         let open = false, sum = 0;
         for (const f of fs) {
           if (faceArea[f] > EPS) sum += faceArea[f];
           else open = true;
         }
-        if (open && !nested.has(faceComp[fs[0]])) lost += sum;
+        if (open && !nested.has(faceComp[fs[0]])) {
+          lost += sum;
+          for (const f of fs) if (faceIndex[f] >= 0) list.push(faceIndex[f]);
+        }
       }
       loss[i] = lost;
+      opens[i] = list;
     }
   }
 
-  return { area: roundArea(area), faces, loss };
+  return { area: roundArea(area), faces, loss, opens };
 }

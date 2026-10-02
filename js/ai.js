@@ -9,7 +9,7 @@ import { analyzeArea, segmentsTouch } from './geometry.js';
 export const LEVELS = {
   easy: { k1: 6, k2: 3, threat: false, noise: 4, blunder: 0.3, potential: 0, horizon: 3, budget: 400 },
   medium: { k1: 12, k2: 6, threat: true, noise: 1, blunder: 0.06, potential: 0, horizon: 6, budget: 700 },
-  hard: { k1: 22, k2: 9, threat: true, noise: 0.1, blunder: 0, potential: 0, horizon: 9, budget: 1400, reply: 4 },
+  hard: { k1: 22, k2: 9, threat: true, noise: 0.1, blunder: 0, potential: 0, horizon: 9, budget: 1400, expose: 0.7 },
 };
 
 // How the hard level imagines the opponent's answer.
@@ -246,6 +246,29 @@ function pressure(g, attacker) {
   return best;
 }
 
+// Expected area a player loses over the next few turns: each enclosed cell
+// survives only if none of its outside walls is broken, and a wall is more
+// likely to go the closer enemy nodes are to it.
+export function exposure(g, pl) {
+  if (!g.areas[pl]) return 0;
+  const edges = g.edgesOf(pl);
+  const an = analyzeArea(edges.map(segOf), true);
+  const enemy = g.nodesOf(1 - pl);
+  if (!enemy.length) return 0;
+  const survive = new Float64Array(an.faces.length).fill(1);
+  edges.forEach((e, i) => {
+    const list = an.opens[i];
+    if (!list.length) return;
+    let d = Infinity;
+    for (const [x, y] of enemy) { d = Math.min(d, distToSeg(x, y, e)); if (d <= 1) break; }
+    const p = d <= RADIUS ? 0.6 : d <= 2 * RADIUS ? 0.3 : d <= 3 * RADIUS ? 0.12 : 0.03;
+    for (const f of list) survive[f] *= 1 - p;
+  });
+  let lost = 0;
+  an.faces.forEach((f, i) => { if (!f.nested) lost += f.area * (1 - survive[i]); });
+  return lost;
+}
+
 // Value of a position for `me`, taken right after my turn ended.
 export function evaluate(g, me, cfg) {
   const op = 1 - me;
@@ -256,13 +279,19 @@ export function evaluate(g, me, cfg) {
   const lost = cfg.threat ? threat(g, me) : 0;
   const noPot = { one: 0, two: 0 };
   const myPot = cfg.potential ? potential(g, me) : noPot, opPot = cfg.potential ? potential(g, op) : noPot;
-  const atk = pressure(g, me);
   const rho = cfg.rho ?? 0.88;
   const next = (myA - lost) - (opA + opPot.two * cfg.potential);
   let later = 0, w = 1;
   const horizon = Math.min(R - 1, cfg.horizon);
   for (let k = 0; k < horizon; k++) { w *= rho; later += w; }
-  const steady = (myA - lost + myPot.two * cfg.potential) - (opA + opPot.two * cfg.potential - atk * (cfg.atk ?? 0.5));
+  let steady;
+  if (cfg.expose) {
+    const k = cfg.expose;
+    steady = (myA - lost - exposure(g, me) * k) - (opA - exposure(g, op) * k);
+  } else {
+    const atk = pressure(g, me);
+    steady = (myA - lost + myPot.two * cfg.potential) - (opA + opPot.two * cfg.potential - atk * (cfg.atk ?? 0.5));
+  }
   return diff + next + later * steady;
 }
 

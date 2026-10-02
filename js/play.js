@@ -102,7 +102,6 @@ export class PlayView {
         if (e.key === 'Escape' || e.key === 'r') this.exitReview();
         return;
       }
-      if (e.target.closest('.board-svg')) return;
       if (e.key === 'u') this.undo();
       if (e.key === 'h') this.hint();
       if (e.key === 'c') this.toggleCoach();
@@ -306,6 +305,16 @@ export class PlayView {
     const last = g.timeline[g.timeline.length - 1];
     if (last) this.floatGains(last.areas);
     if (!g.over) sfx.turn();
+    if (!g.over && this.config.mode === 'local') this.banner(`${this.nameOf(g.player)} to play`);
+    if (!g.over && this.config.mode === 'online' && g.player === this.config.myColor) this.banner('Your turn');
+  }
+
+  banner(text) {
+    const o = $('board-overlay');
+    o.hidden = false;
+    o.innerHTML = `<span>${this.esc(text)}</span>`;
+    clearTimeout(this._banner);
+    this._banner = setTimeout(() => { o.hidden = true; }, 1450);
   }
 
   animOf(entry) {
@@ -371,7 +380,9 @@ export class PlayView {
     const dt = now - c.last;
     c.last = now;
     if (g.over || this.config.mode === 'replay' || this.config.mode === 'idle') return;
-    // The clock keeps running in review, like a real game clock.
+    // Against the computer or on one screen, the clock waits while you are
+    // on another page. Online, and in review, it keeps running.
+    if (this.config.mode !== 'online' && (!this.app.isView('play') || document.hidden)) return;
     const pl = g.player;
     c.ms[pl] -= dt;
     if (c.ms[pl] <= 0) {
@@ -549,6 +560,9 @@ export class PlayView {
   render(anim) {
     const g = this.viewGame();
     if (!g) return;
+    this.moveRows();
+    const upto = g.history.length;
+    this.board.scars = (this._breaks || []).filter((b) => b.at < upto && b.turn >= g.turn - 1).map((b) => b.e);
     this.board.setGame(g, anim);
     this.board.setCanMove(this.isHumanTurn() && !this.thinking);
     this.renderPlayers(g);
@@ -628,6 +642,7 @@ export class PlayView {
     const key = `${this.config.id}:${encodeHistory(hist)}`;
     if (this._rowsKey === key) return this._rows;
     const rows = [];
+    const breaks = [];
     let i = 0;
     const replay = new Game();
     while (i < hist.length) {
@@ -639,6 +654,7 @@ export class PlayView {
         const m = hist[i];
         let entry = null;
         try { entry = replay.apply(m); } catch { break; }
+        if (entry && entry.broke) breaks.push({ turn: startTurn, at: i, e: entry.broke });
         const name = m.kind === 'edge' ? moveName({ ...m, broke: entry && entry.broke }) : moveName(m);
         cells.push(`<button data-n="${i + 1}">${name}</button>`);
         i++;
@@ -651,6 +667,7 @@ export class PlayView {
     }
     this._rowsKey = key;
     this._rows = rows;
+    this._breaks = breaks;
     return rows;
   }
 

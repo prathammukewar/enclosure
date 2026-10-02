@@ -2,6 +2,8 @@
 import { Game, decodeHistory } from './engine.js';
 import { PlayView, LEVEL_NAMES } from './play.js';
 import { LearnView } from './learn.js';
+import { PuzzleView, dailyIndex } from './puzzles.js';
+import { PUZZLES } from './puzzledata.js';
 import { Online } from './online.js';
 import { Demo } from './demo.js';
 import { drawAllDiagrams } from './diagrams.js';
@@ -23,12 +25,14 @@ class App {
     this.online = new Online();
     this.play = new PlayView(this);
     this.learn = new LearnView(this);
+    this.puzzles = new PuzzleView(this);
     this.demo = new Demo($('demo-board'), $('demo-caption'));
     this.view = null;
     this.bind();
     this.bindOnline();
     drawAllDiagrams();
     this.renderRecord();
+    this.renderDaily();
     window.addEventListener('hashchange', () => this.route());
     document.addEventListener('visibilitychange', () => this.updateDemo());
     this.route();
@@ -68,6 +72,7 @@ class App {
       return;
     }
     if (name === 'learn') { this.show('learn'); this.learn.route(arg); return; }
+    if (name === 'puzzles') { this.show('puzzles'); this.puzzles.route(arg); return; }
     if (name === 'rules') { this.show('rules'); return; }
     this.show('home');
   }
@@ -103,6 +108,15 @@ class App {
     const c = s.config;
     const who = c.mode === 'ai' ? `against the computer (${LEVEL_NAMES[c.level] || c.level})` : 'on one screen';
     $('resume-text').textContent = `${c.mode === 'ai' ? 'You are playing' : 'A game'} ${who}, edge ${s.edges} of 120.`;
+  }
+
+  renderDaily() {
+    const i = dailyIndex();
+    const p = PUZZLES[i];
+    const solved = this.puzzles.solved.has(p.code);
+    $('daily-text').textContent = solved ? `Solved. Come back tomorrow for a new one, or try the others.` : `Find a turn that swings ${p.best >= 10 ? Math.round(p.best) : p.best.toFixed(1).replace(/\.0$/, '')} or more.`;
+    $('btn-daily').href = `#puzzles/${i + 1}`;
+    $('btn-daily').textContent = solved ? 'More puzzles' : 'Solve it';
   }
 
   renderRecord() {
@@ -251,6 +265,7 @@ class App {
     store.setSettings(s);
     this.applySettings();
     this.play.applySettings(s);
+    if (this.puzzles.board) this.puzzles.board.setOptions({ coords: s.coords, labels: s.labels, animate: s.animate, confirmTaps: s.confirmTaps });
   }
 
   applySettings() {

@@ -6,6 +6,7 @@ import {
 import { LESSONS } from '../js/lessons.js';
 import { DIAGRAMS } from '../js/diagrams.js';
 import { planTurn, coachMarks } from '../js/ai.js';
+import { PUZZLES } from '../js/puzzledata.js';
 
 let passed = 0, failed = 0;
 const only = process.argv[2];
@@ -534,6 +535,24 @@ test('diagrams show what their captions say', () => {
   eq(new Game(DIAGRAMS.shield.base).check(7, 6, 9, 7).code, 'shielded');
   eq(new Game(DIAGRAMS.enclose.base).areas[BLUE], 18);
   eq(new Game(DIAGRAMS.area.base).areas.join(), '18,10');
+});
+
+test('every puzzle solution reaches the stated best swing', () => {
+  ok(PUZZLES.length >= 1, 'no puzzles');
+  const seen = new Set();
+  for (const p of PUZZLES) {
+    ok(!seen.has(p.code), 'duplicate puzzle');
+    seen.add(p.code);
+    const g0 = Game.fromHistory(decodeHistory(p.code));
+    eq(g0.player, p.player, 'side to move');
+    eq(g0.left, 2, 'two edges to place');
+    const g = g0.clone();
+    for (const [fx, fy, tx, ty] of p.sol) g.play(fx, fy, tx, ty);
+    ok(g.player !== p.player, 'solution finishes the turn');
+    const me = p.player;
+    const v = (g.areas[me] - g0.areas[me]) + (g0.areas[1 - me] - g.areas[1 - me]);
+    near(v, p.best, 1e-6, 'solution swing');
+  }
 });
 
 // ----------------------------------------------------------- computer player

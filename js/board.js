@@ -96,6 +96,7 @@ export class Board {
     svg.innerHTML = `
       <g class="layer-grid"></g>
       <g class="layer-faces"><g class="faces faces-blue"></g><g class="faces faces-red"></g><g class="faces faces-preview"></g></g>
+      <g class="layer-scars"></g>
       <g class="layer-reach"></g>
       <g class="layer-coach"></g>
       <g class="layer-edges"></g>
@@ -164,6 +165,7 @@ export class Board {
     const g = this.game;
     if (!g) return;
     this.renderFaces(anim);
+    this.layers.scars.innerHTML = (this.scars || []).map((e) => `<line class="scar e-${COLOR[e.owner]}" x1="${e.ax}" y1="${e.ay}" x2="${e.bx}" y2="${e.by}"/>`).join('');
     this.renderEdges(anim);
     this.renderNodes(anim);
     this.renderReach();
