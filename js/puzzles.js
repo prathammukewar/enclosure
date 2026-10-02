@@ -247,7 +247,7 @@ export class PuzzleView {
     const prev = this.best[this.keyOf(p)];
     $('pz-best').textContent = this.solved.has(this.keyOf(p)) ? 'Solved.' : prev !== undefined ? `Your best so far: ${formatArea(prev)}` : '';
     $('pz-share').hidden = true;
-    this.say(t === 'block' ? 'Hover an edge to see what it guards.' : 'Swing counts the area you fence in plus the enemy area you open up.');
+    this.say(t === 'block' ? 'After your edge, the dashed line shows their best cut.' : 'Swing counts the area you fence in plus the enemy area you open up.');
     this.renderSwing();
   }
 
@@ -333,7 +333,7 @@ export class PuzzleView {
       this.solved.add(key);
       store.save('puzzles', [...this.solved]);
       if (first && !this.hinted) { this.streak.now++; this.streak.best = Math.max(this.streak.best, this.streak.now); store.save('puzzleStreak', this.streak); }
-      const msg = t === 'block' ? `Solved: their best cut is now ${formatArea(v)}.` : `Solved: ${formatArea(v)}, as good as it gets.`;
+      const msg = t === 'block' ? `Solved: their best cut is now ${formatArea(v)}.` : t === 'plan' ? `Solved: ${formatArea(v)}, target reached.` : `Solved: ${formatArea(v)}, as good as it gets.`;
       this.say(msg, 'good');
       $('pz-best').textContent = 'Solved.';
       if (!this.rush) sfx.win();

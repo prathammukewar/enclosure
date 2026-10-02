@@ -1,7 +1,7 @@
 // Network first, falling back to the cache when offline. Keeps the game
 // playable without a connection after the first visit. Requests revalidate
 // with the server so a new version shows up on the next visit.
-const CACHE = 'enclosure-v4';
+const CACHE = 'enclosure-v5';
 const CORE = [
   './', 'index.html', 'css/style.css', 'manifest.webmanifest', 'icons/icon.svg', 'icons/icon-192.png',
   'js/ai-client.js', 'js/ai.js', 'js/analysis.js', 'js/app.js', 'js/board.js', 'js/book.js',
