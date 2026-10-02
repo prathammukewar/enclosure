@@ -1,0 +1,422 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Enclosure: draw edges, fence in area</title>
+<meta name="description" content="Play Enclosure in your browser: a two-player strategy game on a 19 by 19 grid. Grow your edges, fence in area, and cut your opponent's fences. Play the computer, a friend on the same screen, or a friend online.">
+<meta name="theme-color" content="#f4ede1" media="(prefers-color-scheme: light)">
+<meta name="theme-color" content="#0b1120" media="(prefers-color-scheme: dark)">
+<link rel="canonical" href="https://prathammukewar.github.io/enclosure/">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" href="icons/icon.svg" type="image/svg+xml">
+<link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
+<meta property="og:type" content="website">
+<meta property="og:title" content="Enclosure">
+<meta property="og:description" content="A two-player strategy game of edges and area. Play the computer or a friend in your browser.">
+<meta property="og:url" content="https://prathammukewar.github.io/enclosure/">
+<meta property="og:image" content="https://prathammukewar.github.io/enclosure/og-image.png">
+<meta name="twitter:card" content="summary_large_image">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Patrick+Hand&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="css/style.css">
+<script>
+  // Apply the saved theme before the first paint.
+  try {
+    const s = JSON.parse(localStorage.getItem('enclosure.settings') || '{}');
+    if (s.theme && s.theme !== 'auto') document.documentElement.dataset.theme = s.theme;
+    if (s.palette === 'friendly') document.documentElement.dataset.palette = 'friendly';
+  } catch (e) { /* storage blocked */ }
+</script>
+</head>
+<body>
+<svg width="0" height="0" style="position:absolute" aria-hidden="true" focusable="false"><defs><filter id="glow" x="-10%" y="-10%" width="120%" height="120%"><feGaussianBlur stdDeviation="0.13" result="b"/><feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge></filter></defs></svg>
+<a class="skip" href="#main">Skip to content</a>
+<header class="top">
+  <a class="brand" href="#home" aria-label="Enclosure home">
+    <svg class="brand-mark" viewBox="0 0 32 32" aria-hidden="true"><path d="M6 22 L11 7 L22 9 L26 20 L15 26 Z" class="bm-fill"/><path d="M6 22 L11 7 L22 9 L26 20 L15 26 Z" class="bm-line"/><path d="M26 20 L30 29" class="bm-red"/><circle cx="6" cy="22" r="2.2" class="bm-node"/><circle cx="11" cy="7" r="2.2" class="bm-node"/><circle cx="22" cy="9" r="2.2" class="bm-node"/><circle cx="26" cy="20" r="2.2" class="bm-node"/><circle cx="15" cy="26" r="2.2" class="bm-node"/></svg>
+    <span>Enclosure</span>
+  </a>
+  <nav class="nav" aria-label="Main">
+    <a href="#play" data-nav="play">Play</a>
+    <a href="#learn" data-nav="learn">Learn</a>
+    <a href="#rules" data-nav="rules">Rules</a>
+  </nav>
+  <div class="top-tools">
+    <button class="icon-btn" id="btn-install" hidden title="Install as an app" aria-label="Install as an app"><svg viewBox="0 0 24 24"><path d="M12 3v12m0 0l-5-5m5 5l5-5M5 21h14"/></svg></button>
+    <button class="icon-btn" id="btn-settings" title="Settings" aria-label="Settings"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="3.2"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z"/></svg></button>
+  </div>
+</header>
+
+<main id="main">
+
+<!-- HOME -->
+<section class="view" id="view-home" data-title="Enclosure: draw edges, fence in area">
+  <div class="hero">
+    <div class="hero-text">
+      <h1 class="display">Enclosure</h1>
+      <p class="lede">Draw edges, fence in area, and cut your opponent's fences. Every turn you get points for the area you hold. After 120 edges, the higher score wins.</p>
+      <div class="hero-actions">
+        <button class="btn primary big" data-start="ai">Play the computer</button>
+        <button class="btn big" data-start="local">Two players, one screen</button>
+        <button class="btn big" data-start="online">Play a friend online</button>
+      </div>
+      <p class="hero-sub">New here? <a href="#learn">Learn the game in a few minutes</a> or read <a href="#rules">the rules</a>.</p>
+      <div class="resume card" id="resume-card" hidden>
+        <div>
+          <strong>Game in progress</strong>
+          <span id="resume-text"></span>
+        </div>
+        <button class="btn primary" id="btn-resume">Continue</button>
+      </div>
+    </div>
+    <div class="hero-board">
+      <div class="demo-board" id="demo-board" aria-hidden="true"></div>
+      <div class="demo-caption" id="demo-caption">The computer playing itself</div>
+    </div>
+  </div>
+
+  <div class="steps">
+    <article class="step card">
+      <div class="mini-board" data-diagram="grow"></div>
+      <h3>Grow</h3>
+      <p>Each edge starts at one of your nodes and reaches up to 3 points in any direction. Blue opens with one edge, then everyone plays two per turn.</p>
+    </article>
+    <article class="step card">
+      <div class="mini-board" data-diagram="cut"></div>
+      <h3>Cut</h3>
+      <p>Touch one of your opponent's edges and it breaks. You can only break one at a time, and edges placed on the last turn are protected.</p>
+    </article>
+    <article class="step card">
+      <div class="mini-board" data-diagram="enclose"></div>
+      <h3>Enclose</h3>
+      <p>Close a loop to fence in area. After every turn, both players add the area they hold to their score.</p>
+    </article>
+  </div>
+
+  <div class="record card" id="record-card" hidden>
+    <h3>Your record against the computer</h3>
+    <div class="record-grid" id="record-grid"></div>
+  </div>
+</section>
+
+<!-- PLAY -->
+<section class="view" id="view-play" data-title="Play Enclosure">
+  <div class="play-layout">
+    <div class="board-col">
+      <div class="scorebar" id="scorebar" aria-hidden="true"></div>
+      <div class="board-wrap">
+        <div class="board" id="board"></div>
+        <div class="board-overlay" id="board-overlay" hidden></div>
+      </div>
+      <div class="review-bar" id="review-bar" hidden>
+        <button class="icon-btn" data-review="start" aria-label="First edge" title="Start (Home)"><svg viewBox="0 0 24 24"><path d="M6 5v14M18 6l-8 6 8 6z"/></svg></button>
+        <button class="icon-btn" data-review="prev" aria-label="Previous edge" title="Back (Left arrow)"><svg viewBox="0 0 24 24"><path d="M15 6l-6 6 6 6"/></svg></button>
+        <input type="range" id="review-slider" min="0" max="0" value="0" aria-label="Edge number">
+        <button class="icon-btn" data-review="next" aria-label="Next edge" title="Forward (Right arrow)"><svg viewBox="0 0 24 24"><path d="M9 6l6 6-6 6"/></svg></button>
+        <button class="icon-btn" data-review="end" aria-label="Last edge" title="End (End)"><svg viewBox="0 0 24 24"><path d="M18 5v14M6 6l8 6-8 6z"/></svg></button>
+        <span class="review-pos" id="review-pos"></span>
+      </div>
+      <p class="status" id="status" role="status" aria-live="polite"></p>
+    </div>
+
+    <aside class="side" aria-label="Game panel">
+      <div class="players" id="players">
+        <div class="player-card" data-pl="0">
+          <div class="pc-top"><span class="chip chip-blue"></span><span class="pc-name" id="name-0">Blue</span><span class="pc-clock" id="clock-0" hidden></span></div>
+          <div class="pc-score"><span class="pc-points" id="score-0">0</span><span class="pc-unit">points</span></div>
+          <div class="pc-sub"><span id="income-0">0</span> area held <span class="pc-delta" id="delta-0"></span></div>
+          <div class="pc-turn" id="turn-0"></div>
+        </div>
+        <div class="player-card" data-pl="1">
+          <div class="pc-top"><span class="chip chip-red"></span><span class="pc-name" id="name-1">Red</span><span class="pc-clock" id="clock-1" hidden></span></div>
+          <div class="pc-score"><span class="pc-points" id="score-1">0</span><span class="pc-unit">points</span></div>
+          <div class="pc-sub"><span id="income-1">0</span> area held <span class="pc-delta" id="delta-1"></span></div>
+          <div class="pc-turn" id="turn-1"></div>
+        </div>
+      </div>
+
+      <div class="progress card-lite">
+        <div class="progress-text"><span id="progress-text">Edge 0 of 120</span><span id="updates-text"></span></div>
+        <div class="progress-bar"><div class="progress-fill" id="progress-fill"></div></div>
+        <div class="projection" id="projection"></div>
+      </div>
+
+      <div class="actions">
+        <button class="btn" id="btn-undo" title="Undo (U)">Undo</button>
+        <button class="btn" id="btn-hint" title="Suggest an edge (H)">Hint</button>
+        <button class="btn toggle" id="btn-coach" aria-pressed="false" title="Mark weak walls (C)">Weak walls</button>
+        <button class="btn" id="btn-review" title="Step through the game (R)">Review</button>
+        <button class="btn" id="btn-resign">Resign</button>
+        <button class="btn primary" id="btn-new">New game</button>
+      </div>
+
+      <div class="legend" id="legend">
+        <span><i class="lg lg-fresh"></i>New edge, protected next turn</span>
+        <span><i class="lg lg-break"></i>Breaks an edge</span>
+        <span><i class="lg lg-close"></i>Fences in area</span>
+      </div>
+
+      <div class="tabs" role="tablist">
+        <button role="tab" class="tab" aria-selected="true" data-tab="moves">Moves</button>
+        <button role="tab" class="tab" aria-selected="false" data-tab="chart">Score chart</button>
+        <button role="tab" class="tab" aria-selected="false" data-tab="share">Share</button>
+      </div>
+      <div class="tab-panel" data-panel="moves"><ol class="moves" id="moves"></ol></div>
+      <div class="tab-panel" data-panel="chart" hidden><div class="chart" id="chart"></div></div>
+      <div class="tab-panel" data-panel="share" hidden>
+        <p class="small">A link to this game lets anyone replay it move by move.</p>
+        <div class="share-row"><input id="share-link" readonly aria-label="Game link"><button class="btn" id="btn-copy-link">Copy</button></div>
+        <div class="share-row"><button class="btn" id="btn-download">Download record</button><button class="btn" id="btn-image">Save picture</button></div>
+      </div>
+    </aside>
+  </div>
+</section>
+
+<!-- LEARN -->
+<section class="view" id="view-learn" data-title="Learn Enclosure">
+  <div class="learn-layout">
+    <div class="lesson-list card" id="lesson-list"></div>
+    <div class="lesson card" id="lesson">
+      <div class="lesson-head">
+        <span class="lesson-num" id="lesson-num"></span>
+        <h2 id="lesson-title"></h2>
+      </div>
+      <div class="lesson-body">
+        <div class="lesson-board-wrap"><div class="board lesson-board" id="lesson-board"></div></div>
+        <div class="lesson-text">
+          <div id="lesson-text"></div>
+          <p class="lesson-task" id="lesson-task"></p>
+          <p class="lesson-feedback" id="lesson-feedback" role="status" aria-live="polite"></p>
+          <div class="lesson-actions">
+            <button class="btn" id="lesson-reset">Start over</button>
+            <button class="btn primary" id="lesson-next" disabled>Next lesson</button>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- RULES -->
+<section class="view" id="view-rules" data-title="Rules of Enclosure">
+  <article class="rules">
+    <h1>How to play</h1>
+    <p class="lede">Enclosure is a game for two players on a 19 by 19 grid of points. You grow a drawing of edges, fence in area, and cut your opponent's edges. After 120 edges, the player with more points wins.</p>
+
+    <h2 id="r-start">The start</h2>
+    <div class="rule-row">
+      <div class="mini-board" data-diagram="start"></div>
+      <div>
+        <p>Blue and Red each begin with one edge on the middle row. Blue's runs from the left side, a10, to d10. Red's runs from the right side, s10, to p10.</p>
+        <p>The ends of your edges are your <em>nodes</em>. Every new edge starts at one of them.</p>
+      </div>
+    </div>
+
+    <h2 id="r-turns">Turns</h2>
+    <p>Blue goes first and places one edge. After that, players take turns placing two edges each: Red two, Blue two, and so on. The game lasts exactly 120 edges, so Blue's final turn is a single edge. Each player places 60.</p>
+
+    <h2 id="r-edges">Placing an edge</h2>
+    <div class="rule-row">
+      <div class="mini-board" data-diagram="reach"></div>
+      <div>
+        <p>Pick one of your nodes and draw an edge to any point at most 3 steps away across and at most 3 steps up or down. That's the 7 by 7 square around the node. Any angle is fine. The far end becomes a new node, or joins a node of yours already there.</p>
+        <p>Two limits apply to your own drawing:</p>
+        <ul>
+          <li>You can't end an edge on the middle of one of your own edges.</li>
+          <li>An edge can't pass through one of your own nodes.</li>
+        </ul>
+        <p>Apart from that, your edges may cross each other.</p>
+      </div>
+    </div>
+
+    <h2 id="r-break">Breaking edges</h2>
+    <div class="rule-row">
+      <div class="mini-board" data-diagram="break"></div>
+      <div>
+        <p>If your new edge touches one of your opponent's edges, their edge breaks and disappears. Crossing it counts. So does just touching it: ending your edge on it, or on one of its nodes. Any of their nodes left with no edges disappears too.</p>
+        <p>Each edge can break only one enemy edge. If it would touch two or more, you can't place it. Running through a node where two enemy edges meet touches both, so that isn't allowed either.</p>
+      </div>
+    </div>
+    <div class="rule-row">
+      <div class="mini-board" data-diagram="shield"></div>
+      <div>
+        <p>New edges are protected for one turn. You can't break an edge your opponent placed on their previous turn. On this site new edges have a light center line, so you can tell which ones are safe for now.</p>
+      </div>
+    </div>
+
+    <h2 id="r-score">Area and score</h2>
+    <div class="rule-row">
+      <div class="mini-board" data-diagram="area"></div>
+      <div>
+        <p>Your <em>area</em> is everything your edges fence in, measured exactly in grid squares. A triangle across half a square counts 0.5.</p>
+        <p>At the end of every turn, both players add their current area to their score. If you hold 18 and your opponent holds 10, then when a turn ends you gain 18 and they gain 10. Area keeps paying every turn you hold it, and stops paying the moment a break opens it up.</p>
+      </div>
+    </div>
+    <p>Scores update after edges 1, 3, 5, and so on up to 119, and once more after edge 120. That's 61 updates. When the game ends, the higher score wins. Equal scores are a draw.</p>
+
+    <h2 id="r-faq">Questions</h2>
+    <dl class="faq">
+      <dt>What if some of my area sits inside other area of mine?</dt>
+      <dd>It counts once. A triangle inside your quadrilateral adds nothing beyond the quadrilateral.</dd>
+      <dt>Do loops made by my own edges crossing count?</dt>
+      <dd>Yes. Any region your edges fence in counts, wherever the corners are.</dd>
+      <dt>What if my area surrounds my opponent's?</dt>
+      <dd>You get your area as if they weren't there, and they get theirs as if you weren't there.</dd>
+      <dt>Can my drawing split into separate pieces?</dt>
+      <dd>Yes. If your opponent breaks the edge holding two parts together, both parts stay, and you can keep building from either one.</dd>
+      <dt>Does the edge of the board fence anything in?</dt>
+      <dd>No. Only your own edges enclose area.</dd>
+      <dt>Can a player lose every edge?</dt>
+      <dd>Not in normal play. The edges you placed on your last turn are protected while your opponent moves.</dd>
+      <dt>What if I have no legal edge?</dt>
+      <dd>It almost never happens. On this site your edge is skipped, and it still counts toward the 120.</dd>
+    </dl>
+
+    <h2 id="r-clock">Clocks</h2>
+    <p>Games can be played with a clock. The tournament setting is 1 minute plus 15 seconds: your clock runs during your turn, and each time you finish a turn you gain 15 seconds. If your clock runs out, the rest of your turn is skipped, the edges you placed earlier in that turn lose their protection, and you get 15 seconds for your next turn. Running out of time doesn't lose the game on its own.</p>
+
+    <h2 id="r-notation">Notation on this site</h2>
+    <p>Columns are a to s from left to right and rows are 1 to 19 from bottom to top. An edge is written as its two ends, like <code>d10-f12</code>. An <code>x</code> in the middle, like <code>f12xh13</code>, means it broke an enemy edge.</p>
+
+    <p class="fine">This is an unofficial fan-made version of the game, built from the rules as shown in its reveal video.</p>
+  </article>
+</section>
+
+</main>
+
+<footer class="foot">
+  <span>Unofficial fan-made version of Enclosure.</span>
+  <span><a href="#rules">Rules</a> · <a href="https://github.com/prathammukewar/enclosure">Source</a></span>
+</footer>
+
+<!-- New game -->
+<dialog id="dlg-new" class="dlg">
+  <form method="dialog" class="dlg-body" id="form-new">
+    <h2>New game</h2>
+    <fieldset class="seg" id="seg-mode">
+      <legend>Opponent</legend>
+      <label><input type="radio" name="mode" value="ai" checked><span>Computer</span></label>
+      <label><input type="radio" name="mode" value="local"><span>Same screen</span></label>
+      <label><input type="radio" name="mode" value="online"><span>Online friend</span></label>
+    </fieldset>
+    <div data-show="ai">
+      <fieldset class="seg">
+        <legend>Level</legend>
+        <label><input type="radio" name="level" value="easy"><span>Easy</span></label>
+        <label><input type="radio" name="level" value="medium" checked><span>Medium</span></label>
+        <label><input type="radio" name="level" value="hard"><span>Hard</span></label>
+      </fieldset>
+    </div>
+    <div data-show="ai online">
+      <fieldset class="seg">
+        <legend>You play</legend>
+        <label><input type="radio" name="color" value="0" checked><span><i class="chip chip-blue"></i>Blue, first</span></label>
+        <label><input type="radio" name="color" value="1"><span><i class="chip chip-red"></i>Red</span></label>
+        <label><input type="radio" name="color" value="random"><span>Random</span></label>
+      </fieldset>
+    </div>
+    <div data-show="local">
+      <div class="names">
+        <label>Blue <input name="nameBlue" maxlength="18" placeholder="Blue" autocomplete="off"></label>
+        <label>Red <input name="nameRed" maxlength="18" placeholder="Red" autocomplete="off"></label>
+      </div>
+    </div>
+    <fieldset class="seg">
+      <legend>Clock</legend>
+      <label><input type="radio" name="clock" value="none" checked><span>None</span></label>
+      <label><input type="radio" name="clock" value="60+15"><span>1 min + 15 s</span></label>
+      <label><input type="radio" name="clock" value="180+20"><span>3 min + 20 s</span></label>
+      <label><input type="radio" name="clock" value="300+30"><span>5 min + 30 s</span></label>
+    </fieldset>
+    <div class="dlg-actions">
+      <button class="btn" value="cancel" formnovalidate>Cancel</button>
+      <button class="btn primary" value="start" id="btn-start">Start</button>
+    </div>
+  </form>
+</dialog>
+
+<!-- Online -->
+<dialog id="dlg-online" class="dlg">
+  <div class="dlg-body">
+    <h2 id="online-title">Play a friend online</h2>
+    <div id="online-host">
+      <p>Send this link to your friend. The game starts when they open it.</p>
+      <div class="share-row"><input id="online-link" readonly aria-label="Invite link"><button class="btn" id="btn-copy-invite">Copy</button></div>
+      <button class="btn" id="btn-share-invite" hidden>Share…</button>
+    </div>
+    <div id="online-join" hidden>
+      <p>You've been invited to a game.</p>
+    </div>
+    <label class="name-field">Your name <input id="online-name" maxlength="18" placeholder="Player" autocomplete="nickname"></label>
+    <p class="online-status" id="online-status" role="status" aria-live="polite"></p>
+    <p class="small">Moves go straight between the two browsers. The link works while this page stays open.</p>
+    <div class="dlg-actions">
+      <button class="btn" id="btn-online-cancel">Cancel</button>
+      <button class="btn primary" id="btn-online-join" hidden>Join game</button>
+    </div>
+  </div>
+</dialog>
+
+<!-- Settings -->
+<dialog id="dlg-settings" class="dlg">
+  <form method="dialog" class="dlg-body" id="form-settings">
+    <h2>Settings</h2>
+    <fieldset class="seg">
+      <legend>Look</legend>
+      <label><input type="radio" name="theme" value="auto"><span>Match device</span></label>
+      <label><input type="radio" name="theme" value="paper"><span>Paper</span></label>
+      <label><input type="radio" name="theme" value="night"><span>Night</span></label>
+    </fieldset>
+    <fieldset class="seg">
+      <legend>Colors</legend>
+      <label><input type="radio" name="palette" value="classic"><span>Blue and red</span></label>
+      <label><input type="radio" name="palette" value="friendly"><span>Blue and orange</span></label>
+    </fieldset>
+    <div class="switches">
+      <label class="switch"><input type="checkbox" name="sound"><span>Sounds</span></label>
+      <label class="switch"><input type="checkbox" name="coords"><span>Coordinates around the board</span></label>
+      <label class="switch"><input type="checkbox" name="labels"><span>Area numbers on the board</span></label>
+      <label class="switch"><input type="checkbox" name="confirmTaps"><span>On touch screens, tap twice to place an edge</span></label>
+      <label class="switch"><input type="checkbox" name="animate"><span>Animations</span></label>
+    </div>
+    <div class="dlg-actions">
+      <button class="btn danger-text" type="button" id="btn-reset-stats">Clear my record</button>
+      <button class="btn primary" value="close">Done</button>
+    </div>
+  </form>
+</dialog>
+
+<!-- Game over -->
+<dialog id="dlg-over" class="dlg">
+  <div class="dlg-body over">
+    <h2 id="over-title">Game over</h2>
+    <p class="over-sub" id="over-sub"></p>
+    <div class="over-scores" id="over-scores"></div>
+    <div class="over-stats" id="over-stats"></div>
+    <div class="dlg-actions wrap">
+      <button class="btn" id="btn-over-close">Look at the board</button>
+      <button class="btn" id="btn-over-review">Review</button>
+      <button class="btn primary" id="btn-over-again">Play again</button>
+    </div>
+  </div>
+</dialog>
+
+<!-- Confirm -->
+<dialog id="dlg-confirm" class="dlg small">
+  <form method="dialog" class="dlg-body">
+    <h2 id="confirm-title"></h2>
+    <p id="confirm-text"></p>
+    <div class="dlg-actions">
+      <button class="btn" value="no">Cancel</button>
+      <button class="btn primary" value="yes" id="confirm-yes">OK</button>
+    </div>
+  </form>
+</dialog>
+
+<div class="toast" id="toast" role="status" aria-live="polite" hidden></div>
+
+<script type="module" src="js/app.js"></script>
+</body>
+</html>

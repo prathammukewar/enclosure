@@ -1,0 +1,3 @@
+User-agent: *
+Allow: /
+Sitemap: https://prathammukewar.github.io/enclosure/sitemap.xml

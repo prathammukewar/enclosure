@@ -1,0 +1,125 @@
+// Tutorial lessons. Each has a starting position (Blue to move), a task, and
+// a check that runs after every edge the learner places.
+import { BLUE, RED, formatArea } from './engine.js';
+
+export const LESSONS = [
+  {
+    id: 'first',
+    title: 'Your first edge',
+    text: `<p>The dots at the ends of your edges are your <em>nodes</em>. Every edge you add starts at one of them.</p>
+      <p>Click a blue node to see the square it can reach, then click a dot inside the square. You can also drag from a node and let go on a point.</p>`,
+    task: 'Place any edge.',
+    base: null,
+    crop: [0, 3, 12, 15],
+    check: (g, e) => e && e.kind === 'edge',
+    done: 'That is a move. Blue opens with one edge. After that, every turn is two edges.',
+  },
+  {
+    id: 'reach',
+    title: 'How far an edge reaches',
+    text: `<p>An edge reaches at most 3 points across and 3 points up or down, so its end can be anywhere in the 7 by 7 square around the node. Any angle works.</p>`,
+    task: 'Draw the longest edge you can: 3 across and 3 up or down.',
+    base: { edges: [[BLUE, 2, 9, 5, 9]], turn: 3 },
+    crop: [0, 3, 12, 15],
+    check: (g, e) => e && e.kind === 'edge' && Math.abs(e.tx - e.fx) === 3 && Math.abs(e.ty - e.fy) === 3,
+    retry: (g, e) => (g.player === BLUE && e && e.kind === 'edge' ? 'That one is shorter. Pick a corner of the square.' : null),
+    done: 'Corner to corner is as long as an edge gets.',
+  },
+  {
+    id: 'loop',
+    title: 'Fence in area',
+    text: `<p>Area only counts when your edges close a loop. A loop can use edges you placed earlier, so look for two of your nodes that are close together.</p>
+      <p>The blue shape here is open at the bottom. Its two ends are 6 apart, so it takes two edges to close.</p>`,
+    task: 'Close the loop with your two edges.',
+    base: { edges: [[BLUE, 2, 10, 4, 7], [BLUE, 4, 7, 7, 7], [BLUE, 7, 7, 8, 10]], turn: 3 },
+    crop: [0, 4, 11, 13],
+    check: (g) => g.areas[BLUE] > 0,
+    done: (g) => `You fenced in ${formatArea(g.areas[BLUE])} area. From now on it adds to your score at the end of every turn.`,
+  },
+  {
+    id: 'break',
+    title: 'Break an edge',
+    text: `<p>If your new edge touches a red edge, the red edge breaks. Red nodes left with no edges disappear along with it.</p>`,
+    task: 'Break the red diagonal by crossing it.',
+    base: { edges: [[BLUE, 1, 7, 4, 7], [RED, 8, 5, 5, 8], [RED, 8, 5, 11, 5]], turn: 3 },
+    crop: [0, 3, 12, 11],
+    check: (g, e) => e && e.broke && e.broke.ax === 8 && e.broke.bx === 5,
+    done: 'Snap. The lone red node at the bottom went with it.',
+  },
+  {
+    id: 'touch',
+    title: 'Touching is enough',
+    text: `<p>You don't have to cross all the way. An edge that ends on a red edge breaks it, and so does one that ends on a red node with a single edge.</p>`,
+    task: 'Break the red edge by ending your edge on it.',
+    base: { edges: [[BLUE, 1, 7, 4, 7], [RED, 7, 4, 7, 10], [RED, 7, 4, 10, 4]], turn: 3 },
+    crop: [0, 2, 12, 12],
+    check: (g, e) => e && e.broke && e.tx === 7,
+    done: 'Ending on it was enough.',
+  },
+  {
+    id: 'one',
+    title: 'One at a time',
+    text: `<p>Each edge can break only one red edge. If it would touch two, you can't place it. Running into a red node where two edges meet touches both of them.</p>
+      <p>Try pointing at the top of the red peak to see the warning.</p>`,
+    task: 'Break one of the two red edges.',
+    base: { edges: [[BLUE, 3, 7, 5, 7], [RED, 8, 6, 6, 8], [RED, 8, 6, 10, 8]], turn: 3 },
+    crop: [1, 3, 12, 11],
+    check: (g, e) => e && !!e.broke,
+    done: 'Right. Hitting the peak would have touched both edges.',
+  },
+  {
+    id: 'shield',
+    title: 'New edges are protected',
+    text: `<p>You can't break an edge your opponent placed on their last turn. New edges have a light line down the middle. Older edges are fair game.</p>`,
+    task: "Break the red edge that isn't protected.",
+    base: { edges: [[BLUE, 5, 7, 7, 7], [RED, 10, 3, 10, 6, 3], [RED, 10, 6, 13, 5, 3], [RED, 10, 8, 10, 11], [RED, 10, 11, 13, 12]], turn: 3 },
+    crop: [3, 2, 15, 13],
+    check: (g, e) => e && e.broke && Math.min(e.broke.ay, e.broke.by) >= 8,
+    done: 'Good. The protected edges become breakable after your turn ends.',
+  },
+  {
+    id: 'own',
+    title: 'Your own edges',
+    text: `<p>Two limits apply to your own edges: you can't end an edge in the middle of one of your own edges, and an edge can't run through one of your own nodes.</p>
+      <p>Crossing your own edges is fine, and a loop made that way counts.</p>`,
+    task: 'Fence in some area, by crossing your own edge or any other way.',
+    base: { edges: [[BLUE, 4, 4, 3, 6], [BLUE, 4, 4, 5, 6], [BLUE, 3, 6, 5, 8]], turn: 3 },
+    crop: [0, 2, 9, 10],
+    check: (g) => g.areas[BLUE] > 0,
+    done: (g) => `That fences in ${formatArea(g.areas[BLUE])}.`,
+  },
+  {
+    id: 'score',
+    title: 'How scoring works',
+    text: `<p>At the end of every turn, both players add the area they hold to their score. Red already holds some area here, so Red scores too.</p>
+      <p>Holding area early pays the most: 10 area held for 30 turns is 300 points.</p>`,
+    task: 'Fence in area this turn, then see both scores go up when your turn ends.',
+    base: { edges: [[BLUE, 2, 10, 4, 7], [BLUE, 4, 7, 7, 7], [BLUE, 7, 7, 8, 10], [RED, 12, 6, 15, 6], [RED, 15, 6, 14, 9], [RED, 14, 9, 12, 6]], turn: 3 },
+    crop: [0, 3, 17, 13],
+    check: (g) => g.player === RED && g.scores[BLUE] > 0,
+    retry: (g) => (g.player === RED && g.scores[BLUE] === 0 ? 'Your turn ended without any area. Start over and close the loop.' : null),
+    done: (g) => `Turn over: Blue scored ${formatArea(g.scores[BLUE])} and Red scored ${formatArea(g.scores[RED])}. That happens after every turn until the game ends.`,
+  },
+  {
+    id: 'cells',
+    title: 'Cells protect your area',
+    text: `<p>When an outside wall breaks, only the space right behind it opens up. A wall between two of your cells can break without costing anything.</p>
+      <p>So splitting a big area into cells protects most of it.</p>`,
+    task: 'Split your square into two cells with one edge.',
+    base: { edges: [[BLUE, 3, 4, 6, 4], [BLUE, 6, 4, 6, 7], [BLUE, 6, 7, 3, 7], [BLUE, 3, 7, 3, 4]], turn: 3 },
+    crop: [0, 1, 9, 10],
+    check: (g) => g.analysis(BLUE).faces.length >= 2 && g.areas[BLUE] >= 9,
+    done: 'Now a break on one side only costs that side.',
+  },
+  {
+    id: 'play',
+    title: 'Ready to play',
+    text: `<p>That's every rule. A game is 120 edges, and the higher score at the end wins.</p>
+      <p>A good first game is the computer on Easy.</p>`,
+    task: null,
+    base: null,
+    crop: [0, 3, 18, 15],
+    check: () => false,
+    final: true,
+  },
+];
