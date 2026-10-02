@@ -4,11 +4,19 @@
 // list, so links to them keep working; new ones are added after them.
 import { readFileSync, writeFileSync } from 'node:fs';
 
+// A JSON array, or one JSON object per line.
+function readList(text) {
+  const t = text.trim();
+  if (!t) return [];
+  if (t.startsWith('[')) return JSON.parse(t);
+  return t.split('\n').filter(Boolean).map((l) => JSON.parse(l));
+}
+
 const { PUZZLES: existing } = await import('../js/puzzledata.js');
 
 const all = [];
 process.argv.slice(2).forEach((f, fi) => {
-  for (const p of JSON.parse(readFileSync(f, 'utf8'))) all.push({ type: 'swing', ...p, game: `${fi}:${p.game ?? 0}` });
+  for (const p of readList(readFileSync(f, 'utf8'))) all.push({ type: 'swing', ...p, game: `${fi}:${p.game ?? 0}` });
 });
 
 const typeOf = (p) => p.type || 'swing';

@@ -36,7 +36,8 @@ export class AIClient {
     const { planTurn } = await import('./ai.js');
     const { bookMove } = await import('./book.js');
     await new Promise((r) => setTimeout(r, 30));
-    return planTurn(game.clone(), level, seed, { ...opts, book: opts.book === false ? null : bookMove });
+    const book = opts.book !== false && (level === 'hard' || level === 'adaptive') ? bookMove : null;
+    return planTurn(game.clone(), level, seed, { ...opts, book });
   }
 
   // Resolves with a list of moves for the rest of the current turn (or, with

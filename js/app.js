@@ -239,7 +239,7 @@ class App {
 
   renderRecord() {
     const by = this.profile.current.stats.byLevel || {};
-    const levels = ['easy', 'medium', 'hard', 'expert'];
+    const levels = ['easy', 'medium', 'hard', 'adaptive'];
     const any = levels.some((l) => by[l] && by[l].w + by[l].l + by[l].d > 0);
     $('record-card').hidden = !any;
     if (!any) return;
@@ -432,7 +432,7 @@ class App {
     const color = d.color === 'random' || Number(d.color) < n ? d.color : '0';
     $('color-choices').innerHTML = names.map((nm, i) => `<label><input type="radio" name="color" value="${i}"${String(i) === String(color) ? ' checked' : ''}><span><i class="chip chip-p${i}"></i>${esc(nm)}${mate(i)}${i === 0 ? ', first' : ''}</span></label>`).join('')
       + `<label><input type="radio" name="color" value="random"${color === 'random' ? ' checked' : ''}><span>Random</span></label>`;
-    const typeOpts = (v) => [['human', 'Person'], ['easy', 'Computer, Easy'], ['medium', 'Computer, Medium'], ['hard', 'Computer, Hard'], ['expert', 'Computer, Expert']]
+    const typeOpts = (v) => [['human', 'Person'], ['easy', 'Computer, Easy'], ['medium', 'Computer, Medium'], ['hard', 'Computer, Hard']]
       .map(([k, t]) => `<option value="${k}"${k === v ? ' selected' : ''}>${t}</option>`).join('');
     $('seat-rows').innerHTML = names.map((nm, i) => `
       <div class="seat-row"><i class="chip chip-p${i}"></i>
@@ -659,9 +659,10 @@ class App {
     const players = [];
     const used = new Set();
     for (const line of lines) {
-      const m = line.match(/^computer\s*(easy|medium|hard|expert)?$/i);
+      const m = line.match(/^computer\s*(easy|medium|hard)?$/i);
+      const lvl = m ? (m[1] || 'medium').toLowerCase() : null;
       const p = m
-        ? { type: 'ai', level: (m[1] || 'medium').toLowerCase(), name: `Computer (${LEVEL_NAMES[(m[1] || 'medium').toLowerCase()]})` }
+        ? { type: 'ai', level: lvl, name: `Computer (${LEVEL_NAMES[lvl]})` }
         : { type: 'human', name: line.slice(0, 24) };
       let name = p.name;
       for (let k = 2; used.has(name.toLowerCase()); k++) name = `${p.name} ${k}`;

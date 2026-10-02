@@ -275,7 +275,7 @@ export class AnalysisView {
     if (g.over) return;
     this.say('The computer is thinking…');
     let res;
-    try { res = await this.ai.think(g, 'expert', 99, { explain: true, book: false }); } catch { return; }
+    try { res = await this.ai.think(g, 'hard', 99, { explain: true, book: false }); } catch { return; }
     const opts = res.options || [];
     if (!opts.length) { this.say('No suggestion.'); return; }
     const desc = (o) => o.plan.map((m) => (m.kind === 'edge' ? `${g.pointName(m.fx, m.fy)}-${g.pointName(m.tx, m.ty)}` : m.kind)).join(', ');

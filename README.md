@@ -9,7 +9,7 @@ A browser version of Enclosure, a strategy game on a 19 by 19 grid. You grow a d
 ## What you can do
 
 **Play**
-- Against the computer on Easy, Medium, Hard or Expert, or on Adaptive, which plays harder when it's behind. Pick a style too: balanced, a careful builder, a raider that goes after your walls, or a gambler.
+- Against the computer on Easy, Medium or Hard, or on Adaptive, which eases off when it gets well ahead. Pick a style too: balanced, a careful builder, a raider that goes after your walls, or a gambler.
 - With friends on one screen, with any mix of people and computer players.
 - Online by sending a link. Up to four players, empty seats can go to the computer, and anyone can watch with a second link. If someone reloads the page, they get their seat back.
 - By link, at your own pace: after your turn you send a link, the other player opens it, plays and sends one back. You can set a time limit per turn.

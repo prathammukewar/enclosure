@@ -16,10 +16,18 @@ import { Worker, isMainThread, parentPort } from 'node:worker_threads';
 import { cpus } from 'node:os';
 import { readFileSync } from 'node:fs';
 
+// A JSON array, or one JSON object per line.
+function readList(text) {
+  const t = text.trim();
+  if (!t) return [];
+  if (t.startsWith('[')) return JSON.parse(t);
+  return t.split('\n').filter(Boolean).map((l) => JSON.parse(l));
+}
+
 if (isMainThread) {
   const file = process.argv[2];
   const threads = Number(process.argv[3] || Math.max(1, cpus().length - 2));
-  const list = file && file !== '-' ? JSON.parse(readFileSync(file, 'utf8')) : (await import('../js/puzzledata.js')).PUZZLES;
+  const list = file && file !== '-' ? readList(readFileSync(file, 'utf8')) : (await import('../js/puzzledata.js')).PUZZLES;
   const results = new Array(list.length);
   let next = 0, done = 0;
   await new Promise((resolve) => {

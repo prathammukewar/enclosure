@@ -4,7 +4,7 @@
 import { encodeHistory, encodeRules, formatArea } from './engine.js';
 import * as store from './store.js';
 
-export const COMPUTER_RATING = { easy: 800, medium: 1150, hard: 1500, expert: 1700, adaptive: 1150 };
+export const COMPUTER_RATING = { easy: 800, medium: 1150, hard: 1500, adaptive: 1150 };
 
 export const ACHIEVEMENTS = [
   ['first_game', 'First game', 'Finish a game.'],
@@ -18,8 +18,7 @@ export const ACHIEVEMENTS = [
   ['beat_easy', 'Warm-up', 'Beat the computer on Easy.'],
   ['beat_medium', 'Getting serious', 'Beat the computer on Medium.'],
   ['beat_hard', 'Hard won', 'Beat the computer on Hard.'],
-  ['beat_expert', 'Expert slayer', 'Beat the computer on Expert.'],
-  ['solo', 'On my own', 'Beat Hard or Expert without hints or undo.'],
+  ['solo', 'On my own', 'Beat Hard without hints or undo.'],
   ['student', 'Student', 'Finish every lesson.'],
   ['strategist', 'Strategist', 'Read every chapter of the strategy guide.'],
   ['puzzles10', 'Puzzler', 'Solve 10 puzzles.'],
@@ -212,7 +211,7 @@ export class Profiles {
       if (st.lost[me] === 0 && g.resigned === null) this.unlock('untouchable');
       if (worst <= -200) this.unlock('comeback');
       if (level) this.unlock(`beat_${level === 'adaptive' ? 'medium' : level}`);
-      if ((level === 'hard' || level === 'expert') && !t.hints && !t.undos) this.unlock('solo');
+      if (level === 'hard' && !t.hints && !t.undos) this.unlock('solo');
     }
   }
 
@@ -269,8 +268,8 @@ export function renderYou(app, root) {
   const P = app.profile;
   const p = P.current;
   const s = p.stats;
-  const levels = ['easy', 'medium', 'hard', 'expert', 'adaptive'];
-  const names = { easy: 'Easy', medium: 'Medium', hard: 'Hard', expert: 'Expert', adaptive: 'Adaptive' };
+  const levels = ['easy', 'medium', 'hard', 'adaptive'];
+  const names = { easy: 'Easy', medium: 'Medium', hard: 'Hard', adaptive: 'Adaptive' };
   const games = p.games;
   const esc = (t) => String(t).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
   const resultText = (r) => (r === 'w' ? 'Won' : r === 'l' ? 'Lost' : r === 'd' ? 'Draw' : '');

@@ -14,7 +14,7 @@ import * as store from './store.js';
 import { boardImage } from './image.js';
 import { seatNames } from './colors.js';
 
-export const LEVEL_NAMES = { easy: 'Easy', medium: 'Medium', hard: 'Hard', expert: 'Expert', adaptive: 'Adaptive' };
+export const LEVEL_NAMES = { easy: 'Easy', medium: 'Medium', hard: 'Hard', adaptive: 'Adaptive' };
 export const STYLE_NAMES = { balanced: 'Balanced', builder: 'Builder', raider: 'Raider', gambler: 'Gambler' };
 const $ = (id) => document.getElementById(id);
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
@@ -918,11 +918,11 @@ export class PlayView {
     }
     if (g.over) {
       const w = g.winner();
-      if (g.resigned !== null) return `${this.nameOf(g.resigned)} resigned.${w >= 0 ? ` ${this.sideName(w)} wins.` : ''}`;
+      if (g.resigned !== null) return `${this.nameOf(g.resigned)} resigned.${w >= 0 ? ` ${this.sideName(w)} win${g.rules.teams ? '' : 's'}.` : ''}`;
       const sc = g.sideScores();
       if (w === -1) return `Draw at ${fmtPoints(Math.max(...sc))}.`;
       const others = sc.filter((_, s) => s !== w);
-      return `${this.sideName(w)} wins, ${fmtPoints(sc[w])} to ${fmtPoints(Math.max(...others))}.`;
+      return `${this.sideName(w)} win${g.rules.teams ? '' : 's'}, ${fmtPoints(sc[w])} to ${fmtPoints(Math.max(...others))}.`;
     }
     const left = g.left === 1 ? '1 edge' : `${g.left} edges`;
     const sum = this.summary ? `${this.summary} ` : '';
@@ -1078,7 +1078,7 @@ export class PlayView {
     const order = Array.from({ length: g.NP }, (_, p) => p).sort((a, b) => g.scores[b] - g.scores[a]);
     $('over-scores').innerHTML = order.map((pl) => `<div><b>${fmtPoints(g.scores[pl])}</b><span><i class="chip chip-p${pl}"></i>${esc(this.nameOf(pl))}</span></div>`).join('');
     const st = this.stats();
-    const list = (arr, f = (v) => v) => arr.map((v) => `<b>${f(v)}</b>`).join(' / ');
+    const list = (arr, f = (v) => v) => arr.map((v, i) => `<b class="t-p${i}">${f(v)}</b>`).join(' / ');
     $('over-stats').innerHTML = `
       ${g.rules.teams ? `<div class="span2">Team totals<br>${[0, 1].map((s) => `${esc(this.sideName(s))} <b>${fmtPoints(g.sideScores()[s])}</b>`).join(', ')}</div>` : ''}
       <div>Most area held<br>${list(st.peak, formatArea)}</div>

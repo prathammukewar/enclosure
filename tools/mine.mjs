@@ -9,7 +9,8 @@
 // targets are what a beam search found, so they are a reachable bar rather
 // than a proven best; the puzzle says "at least".
 //
-// node tools/mine.mjs [games] [threads] [kinds] > mined.json
+// node tools/mine.mjs [games] [threads] [kinds] > mined.jsonl
+// Writes one puzzle per line as soon as it's found.
 // kinds: comma list, default swing,gain,cut,block,plan
 
 import { Worker, isMainThread, parentPort, workerData } from 'node:worker_threads';
@@ -28,6 +29,7 @@ if (isMainThread) {
       const feed = () => { if (next < games) w.postMessage(seed0 + next++); else w.terminate(); };
       w.on('message', (r) => {
         out.push(...r);
+        for (const p of r) process.stdout.write(`${JSON.stringify(p)}\n`);
         done++;
         const count = (k) => out.filter((p) => p.type === k).length;
         process.stderr.write(`game ${done}/${games}: +${r.length} (${kinds.map((k) => `${k} ${count(k)}`).join(', ')})\n`);
@@ -37,7 +39,6 @@ if (isMainThread) {
       feed();
     }
   });
-  console.log(JSON.stringify(out));
 } else {
   const { Game, encodeHistory } = await import('../js/engine.js');
   const { planTurn, scoreMoves } = await import('../js/ai.js');
@@ -118,12 +119,14 @@ if (isMainThread) {
   });
 
   function tryTurnKinds(g, found) {
-    const order = ['swing', 'gain', 'cut'].filter((k) => kinds.has(k)).sort(() => Math.random() - 0.5);
+    // Cut and swing puzzles are rarer, so they get the first try.
+    const order = ['cut', 'swing', 'gain'].filter((k) => kinds.has(k));
     for (const mode of order) {
       const r = solveTurn(g, mode);
       if (!r || !r.sol.length) continue;
       let good;
       if (mode === 'swing') good = r.best >= 3 && r.best - r.greedy >= 1.5;
+      else if (mode === 'cut') good = r.best >= 4 && (r.best - r.greedy >= 1 || r.firsts <= 3);
       else good = r.best >= 4 && (r.best - r.greedy >= 1 || (r.firsts <= 2 && r.best >= 6));
       if (!good) continue;
       found.push(rec(g, mode, { best: r.best, greedy: r.greedy, firsts: r.firsts, gain: r.gain, cut: r.cut, sol: r.sol }));
@@ -135,7 +138,7 @@ if (isMainThread) {
   function tryBlock(g, found) {
     const r = solveBlock(g);
     if (!r || !r.sol) return false;
-    if (r.worst - r.best < 4 || r.count > Math.max(3, r.total * 0.08)) return false;
+    if (r.worst - r.best < 3 || r.count > Math.max(4, r.total * 0.1)) return false;
     found.push(rec(g, 'block', { best: r.best, worst: r.worst, count: r.count, total: r.total, sol: r.sol, gain: 0, cut: 0 }));
     return true;
   }
@@ -164,7 +167,7 @@ if (isMainThread) {
       const mid = g.placed >= 12 && g.placed <= 112 && g.turn - lastTurn >= 3;
       if (mid && g.left === 2 && Math.random() < 0.5) {
         let ok = false;
-        if (kinds.has('plan') && g.placed <= 100 && Math.random() < 0.18) ok = tryPlan(g, found);
+        if (kinds.has('plan') && g.placed <= 100 && Math.random() < 0.3) ok = tryPlan(g, found);
         if (!ok) ok = tryTurnKinds(g, found);
         if (ok) lastTurn = g.turn;
       }

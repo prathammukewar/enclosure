@@ -1,4 +1,4 @@
-// Opening book: strong first turns found offline by a long search
+// Opening book for Hard: first turns found offline by a longer search
 // (tools/book.mjs), keyed by the position. Used only with the standard rules.
 import { BOOK } from './bookdata.js';
 import { encodeRules } from './engine.js';

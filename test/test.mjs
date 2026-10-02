@@ -14,6 +14,8 @@ import { canBreak as aiCanBreak } from '../js/ai.js';
 import { pairRound } from '../js/tournament.js';
 import { encodeGif } from '../js/export.js';
 import { INTRO } from '../js/demo.js';
+import { solveTurn, solveBlock, bestSingleCut } from '../js/solver.js';
+import { bookMove } from '../js/book.js';
 
 let passed = 0, failed = 0;
 const only = process.argv[2];
@@ -747,22 +749,118 @@ test('diagrams show what their captions say', () => {
   eq(new Game(DIAGRAMS.area.base).areas.join(), '18,10');
 });
 
-test('every puzzle solution reaches the stated best swing', () => {
+test('every puzzle solution reaches the stated best', () => {
   ok(PUZZLES.length >= 1, 'no puzzles');
   const seen = new Set();
   for (const p of PUZZLES) {
     ok(!seen.has(p.code), 'duplicate puzzle');
     seen.add(p.code);
+    const type = p.type || 'swing';
     const g0 = Game.fromHistory(decodeHistory(p.code));
-    eq(g0.player, p.player, 'side to move');
-    eq(g0.left, 2, 'two edges to place');
-    const g = g0.clone();
-    for (const [fx, fy, tx, ty] of p.sol) g.play(fx, fy, tx, ty);
-    ok(g.player !== p.player, 'solution finishes the turn');
     const me = p.player;
-    const v = (g.areas[me] - g0.areas[me]) + (g0.areas[1 - me] - g.areas[1 - me]);
-    near(v, p.best, 1e-6, 'solution swing');
+    eq(g0.player, me, 'side to move');
+    eq(g0.left, type === 'block' ? 1 : 2, `edges to place (${type})`);
+    const g = g0.clone();
+    for (const [fx, fy, tx, ty] of p.sol) {
+      if (type === 'plan') while (g.player !== me && !g.over) g.timeout();
+      g.play(fx, fy, tx, ty);
+    }
+    ok(g.player !== me, 'solution finishes the turn');
+    const gain = g.areas[me] - g0.areas[me], cut = g0.areas[1 - me] - g.areas[1 - me];
+    if (type === 'block') near(bestSingleCut(g, me).cut, p.best, 1e-6, 'block cut');
+    else near(type === 'gain' ? gain : type === 'cut' ? cut : gain + cut, p.best, 1e-6, `${type} value`);
+    if (type === 'plan') eq(p.sol.length, 4, 'plan length');
   }
+});
+
+test('the solver finds the verified best turn', () => {
+  const picks = PUZZLES.filter((p) => !p.type || p.type === 'swing').slice(0, 6);
+  for (const p of picks) {
+    const g = Game.fromHistory(decodeHistory(p.code));
+    const r = solveTurn(g);
+    near(r.best, p.best, 1e-6, 'best swing');
+    const h = g.clone();
+    for (const [fx, fy, tx, ty] of r.sol) h.play(fx, fy, tx, ty);
+    near((h.areas[p.player] - g.areas[p.player]) + (g.areas[1 - p.player] - h.areas[1 - p.player]), r.best, 1e-6, 'solution swing');
+  }
+});
+
+test('the solver matches brute force on small boards', () => {
+  const variants = [{ size: 11, perPlayer: 24 }, { size: 11, perPlayer: 16, players: 3 }, { size: 13, perPlayer: 10, players: 4, teams: true }];
+  let checked = 0;
+  variants.forEach((v, k) => {
+    const g = new Game(null, makeRules(v));
+    let seed = 17 + k;
+    while (!g.over && g.placed < g.totalEdges * 0.55) for (const m of planTurn(g, 'easy', seed++)) { if (!g.over) g.apply(m); }
+    while (!g.over && g.left !== 2) g.apply(planTurn(g, 'easy', seed++)[0]);
+    if (g.over) return;
+    const me = g.player;
+    for (const mode of ['swing', 'gain', 'cut']) {
+      const value = (h) => {
+        const gain = h.areas[me] - g.areas[me];
+        let cut = 0;
+        for (const q of g.enemiesOf(me)) cut += g.areas[q] - h.areas[q];
+        return mode === 'gain' ? gain : mode === 'cut' ? cut : gain + cut;
+      };
+      let best = -Infinity;
+      for (const m1 of g.legalMoves()) {
+        const g1 = g.clone();
+        g1.play(m1.fx, m1.fy, m1.tx, m1.ty);
+        best = Math.max(best, value(g1));
+        if (g1.player !== me || g1.over) continue;
+        for (const m2 of g1.legalMoves()) {
+          if (!m2.breaks && !m2.closes) continue;
+          const g2 = g1.clone();
+          g2.play(m2.fx, m2.fy, m2.tx, m2.ty);
+          best = Math.max(best, value(g2));
+        }
+      }
+      near(solveTurn(g, mode).best, Math.max(0, best), 1e-6, `${mode} on ${JSON.stringify(v)}`);
+      checked++;
+    }
+  });
+  ok(checked >= 6, `only ${checked} checked`);
+});
+
+test('the opening book answers every first edge with a legal turn', () => {
+  const g = new Game();
+  const first = bookMove(g);
+  ok(first && first.length === 1, 'book has a first edge');
+  let answered = 0, total = 0;
+  for (const m of g.legalMoves()) {
+    const h = g.clone();
+    h.play(m.fx, m.fy, m.tx, m.ty);
+    total++;
+    const reply = bookMove(h);
+    if (!reply) continue;
+    eq(reply.length, 2, 'reply length');
+    const k = h.clone();
+    for (const r of reply) k.play(r.fx, r.fy, r.tx, r.ty);
+    eq(k.player, BLUE, 'reply finishes the turn');
+    answered++;
+  }
+  eq(answered, total, 'replies found');
+});
+
+test('block solver matches trying every edge and every reply', () => {
+  // Blue has a pen next to Red, one edge left.
+  const g = new Game({ edges: [[BLUE, 4, 6, 7, 6], [BLUE, 7, 6, 7, 9], [BLUE, 7, 9, 4, 9], [BLUE, 4, 9, 4, 6], [RED, 10, 7, 12, 7]], turn: 3, player: BLUE, left: 1 });
+  const r = solveBlock(g);
+  let best = Infinity;
+  for (const m of g.legalMoves()) {
+    const h = g.clone();
+    h.play(m.fx, m.fy, m.tx, m.ty);
+    let worst = 0;
+    for (const e of h.legalMoves()) {
+      if (!e.breaks || e.breaks.owner !== BLUE) continue;
+      const k = h.clone();
+      k.play(e.fx, e.fy, e.tx, e.ty);
+      worst = Math.max(worst, h.areas[BLUE] - k.areas[BLUE]);
+    }
+    best = Math.min(best, worst);
+  }
+  near(r.best, best, 1e-6, 'best block');
+  ok(r.worst >= r.best, 'worst is at least best');
 });
 
 test('guide positions are valid, tasks can be solved, and wrong answers fail', () => {

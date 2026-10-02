@@ -492,7 +492,7 @@
     <p>The rules engine is tested against a second, deliberately simple version written straight from the rule text. Thousands of random games, including every house-rule variant, compare the two on every candidate edge.</p>
     <h2>The computer player</h2>
     <p>It plans a whole turn at once. It ranks first edges by what they do right away and what they set up, tries the best second edges for each, and scores the result. The score adds the points gap, the area each side holds, what the opponent could break on their very next turn, and how exposed each cell is: a wall close to enemy nodes is more likely to go, and a cell is lost if any of its outside walls goes.</p>
-    <p>The levels were tuned with computer-against-computer matches. Hard beats Medium about four games in five, and Medium beats Easy about nine in ten. Expert searches wider again with weights tuned by an automatic search over those matches.</p>
+    <p>The levels were tuned with computer-against-computer matches. In 40-game matches, Hard beat Medium 30 to 10 and Medium beat Easy 32 to 8. Searching wider, looking a turn further ahead, or nudging the weights one at a time all failed to beat Hard, so Hard is the strongest level for now. Adaptive plays at Hard strength until it gets well ahead, then eases off.</p>
     <h2>Puzzles you can trust</h2>
     <p>Each puzzle comes from a computer game. The best turn is found by trying every first edge and every second edge that could matter, then replaying the best candidates exactly until nothing left could beat them. A separate check then plays out every legal pair of edges on the engine alone and confirms the answer. Block puzzles are checked the same way: every edge you could place, against every enemy edge that could cut you after it.</p>
     <p>Plan-ahead puzzles are the exception. Four edges in a row have far too many combinations to try them all, so the target is the best plan a search found, and it's always more than two separate best turns would get. The puzzle asks you to reach it, not to prove nothing beats it.</p>
@@ -547,7 +547,6 @@
           <label><input type="radio" name="level" value="easy"><span>Easy</span></label>
           <label><input type="radio" name="level" value="medium" checked><span>Medium</span></label>
           <label><input type="radio" name="level" value="hard"><span>Hard</span></label>
-          <label><input type="radio" name="level" value="expert"><span>Expert</span></label>
           <label><input type="radio" name="level" value="adaptive"><span title="Plays harder when behind, easier when far ahead">Adaptive</span></label>
         </fieldset>
         <label class="field">Style <select name="aiStyle"><option value="balanced">Balanced</option><option value="builder">Builder: careful, builds cells</option><option value="raider">Raider: goes after your walls</option><option value="gambler">Gambler: takes risks</option></select></label>
@@ -691,7 +690,7 @@
   <form method="dialog" class="dlg-body" id="form-tour">
     <h2 id="dlg-tour-title">New tournament</h2>
     <label class="field">Name <input name="tname" maxlength="40" placeholder="Strategy night"></label>
-    <p class="small">One player per line. Add a computer player by writing <code>computer easy</code>, <code>computer medium</code>, <code>computer hard</code> or <code>computer expert</code>.</p>
+    <p class="small">One player per line. Add a computer player by writing <code>computer easy</code>, <code>computer medium</code> or <code>computer hard</code>.</p>
     <label class="field">Players <textarea name="tplayers" rows="6" placeholder="Ana&#10;Ben&#10;Chen&#10;computer medium"></textarea></label>
     <fieldset class="seg">
       <legend>Games</legend>

@@ -10,7 +10,6 @@ export const LEVELS = {
   easy: { k1: 6, k2: 3, threat: false, noise: 4, blunder: 0.3, potential: 0, horizon: 3, budget: 400 },
   medium: { k1: 12, k2: 6, threat: true, noise: 1, blunder: 0.06, potential: 0, horizon: 6, budget: 700 },
   hard: { k1: 22, k2: 9, threat: true, noise: 0.1, blunder: 0, potential: 0, horizon: 9, budget: 1400, expose: 0.7 },
-  expert: { k1: 30, k2: 12, threat: true, noise: 0.05, blunder: 0, potential: 0, horizon: 9, budget: 2600, expose: 0.7 },
 };
 
 // Personalities change what a level cares about, not how hard it searches.
