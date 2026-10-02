@@ -24,16 +24,26 @@ const coarse = typeof matchMedia === 'function' && matchMedia('(pointer: coarse)
 
 export const DEFAULT_SETTINGS = {
   theme: 'auto',
-  palette: 'classic',
+  colors: ['blue', 'red', 'green', 'gold'],
+  shapes: false,
+  lineScale: 1,
+  nodeScale: 1,
   sound: true,
   coords: true,
   labels: true,
   confirmTaps: coarse,
   animate: true,
+  turnUrls: '',
+  turnUser: '',
+  turnPass: '',
 };
 
 export function getSettings() {
-  return { ...DEFAULT_SETTINGS, ...load('settings', {}) };
+  const saved = load('settings', {});
+  // Earlier versions had a single colorblind-friendly switch.
+  if (saved.palette === 'friendly' && !saved.colors) saved.colors = ['blue', 'orange', 'pink', 'green'];
+  delete saved.palette;
+  return { ...DEFAULT_SETTINGS, ...saved };
 }
 
 export function setSettings(s) {

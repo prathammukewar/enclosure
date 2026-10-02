@@ -2,11 +2,18 @@
 import { analyzeArea, segmentsTouch, pointOnSegment } from '../js/geometry.js';
 import {
   Game, BLUE, RED, N, TOTAL_EDGES, encodeHistory, decodeHistory, moveName, updatesAfter, formatArea,
+  makeRules, encodeRules, decodeRules, encodePosition, decodePosition, startEdges,
 } from '../js/engine.js';
 import { LESSONS } from '../js/lessons.js';
 import { DIAGRAMS } from '../js/diagrams.js';
 import { planTurn, coachMarks } from '../js/ai.js';
 import { PUZZLES } from '../js/puzzledata.js';
+import { CHAPTERS, breakableBlueWalls } from '../js/guidecontent.js';
+import { validateEdges } from '../js/analysis.js';
+import { canBreak as aiCanBreak } from '../js/ai.js';
+import { pairRound } from '../js/tournament.js';
+import { encodeGif } from '../js/export.js';
+import { INTRO } from '../js/demo.js';
 
 let passed = 0, failed = 0;
 const only = process.argv[2];
@@ -259,12 +266,154 @@ test('notation and encoding round trip', () => {
   eq(formatArea(18), '18'); eq(formatArea(0.75), '0.75'); eq(formatArea(2.5), '2.5'); eq(formatArea(10 / 3), '3.33');
 });
 
+// ------------------------------------------------------------ rule variants
+
+test('old game links replay to the same result', () => {
+  const code = 'CDoCOeBkRCu_Cw6CPKC8ZCFpCILC8rCPHCHhBaPC6EBkMCxjCvTC6YCNkDb1CydC4gDlyCyaBaSC6pDXoBaHCHrC4WDVYCymCXnCPEC34BrLCZHDU7CNUCYICovC3-CnJCb6CowCZ0DVECYJCbjCOoCqwCqhCpLCrMCZUCo_CqQC4WCq6CbdCbhC4MCOfCIDByKDEFDEBCqhCpDCQuCaMCcQCYJC4TBkODFOCpGCrLDU_CZFDR5C3ADVECYWDR3CNjCM-DF7CqhCaXC4TDSFDG0CoQDU9CcVDW7B-TCaHDxLCYWDU7DVYDEzDR4CM-CagDFTDWLDlsCoMCH7DR_CZqCraCJeCL3B-FCOUDV3';
+  const g = Game.fromHistory(decodeHistory(code));
+  ok(g.over);
+  eq(g.scores.map(Math.round).join(), '2439,1765');
+  eq(encodeHistory(g.history), code);
+  eq(encodeRules(g.rules), '');
+});
+
+test('rules: defaults, validation and round trip', () => {
+  const d = makeRules();
+  eq(d.size, 19); eq(d.radius, 3); eq(d.players, 2); eq(d.perPlayer, 60); eq(d.protect, true); eq(d.border, false);
+  eq(makeRules({ size: 14 }).size, 15, 'sizes are odd');
+  eq(makeRules({ players: 3, teams: true }).teams, false, 'teams need four players');
+  const r = { size: 13, radius: 4, players: 4, teams: true, perPlayer: 25, protect: false, border: true, timeout: 'edge', stuck: 'turn', handicap: [0, 2, 0, 1] };
+  const back = decodeRules(encodeRules(r));
+  eq(JSON.stringify(back), JSON.stringify(makeRules(r)));
+  eq(encodeRules({}), '');
+});
+
+test('start edges for every board and player count', () => {
+  eq(JSON.stringify(startEdges(makeRules())), JSON.stringify([[0, 0, 9, 3, 9], [1, 15, 9, 18, 9]]));
+  eq(JSON.stringify(startEdges(makeRules({ size: 13, players: 4 }))), JSON.stringify([[0, 0, 6, 3, 6], [1, 9, 6, 12, 6], [2, 6, 0, 6, 3], [3, 6, 9, 6, 12]]));
+});
+
+test('reach follows the radius rule', () => {
+  const g2 = new Game(null, { radius: 2 });
+  ok(g2.check(3, 9, 5, 11).ok); eq(g2.check(3, 9, 6, 9).code, 'range');
+  ok(g2.check(3, 9, 6, 9).reason.includes('2 points'));
+  const g4 = new Game(null, { radius: 4 });
+  ok(g4.check(3, 9, 7, 13).ok); eq(g4.check(3, 9, 8, 9).code, 'range');
+});
+
+test('three and four players take turns in order and each places the same number of edges', () => {
+  for (const players of [3, 4]) {
+    const g = new Game(null, { players, perPlayer: 10 });
+    const counts = new Array(players).fill(0);
+    const order = [];
+    while (!g.over) { if (order[order.length - 1] !== g.player) order.push(g.player); counts[g.player]++; g.pass(); }
+    eq(counts.join(), new Array(players).fill(10).join(), `${players} players`);
+    eq(order.slice(0, players + 1).join(), [...Array(players).keys(), 0].join());
+    eq(g.timeline.length, g.updatesLeft() + g.timeline.length, 'no updates left');
+  }
+  const g = new Game(null, { players: 3, perPlayer: 10 });
+  eq(g.updatesLeft(), 16, 'turns for 3 x 10 edges: 1 + 14 twos + 1');
+});
+
+test('teams: teammates cannot touch, team scores add up', () => {
+  const g = new Game({ edges: [[0, 2, 2, 4, 2], [2, 6, 0, 6, 4], [1, 9, 9, 9, 12], [3, 12, 12, 14, 12]], turn: 5, rules: { players: 4, teams: true } });
+  eq(g.player, 0);
+  eq(g.check(4, 2, 6, 2).code, 'ally', 'ends on a teammate edge');
+  ok(g.isEnemy(0, 1) && g.isAlly(0, 2) && !g.isEnemy(0, 2));
+  const h = new Game({ edges: [[0, 0, 0, 3, 0], [0, 3, 0, 3, 3], [2, 10, 10, 13, 10], [2, 13, 10, 13, 13], [2, 13, 13, 10, 10], [1, 17, 17, 18, 18]], turn: 5, rules: { players: 4, teams: true } });
+  eq(h.sideAreas().join(), '4.5,0');
+  h.play(3, 3, 0, 0);
+  eq(h.areas[0], 4.5);
+  eq(h.sideAreas().join(), '9,0');
+});
+
+test('protection can be switched off', () => {
+  const base = { edges: [[BLUE, 2, 5, 3, 5], [RED, 4, 3, 4, 7, 3], [RED, 4, 3, 6, 3]], turn: 3 };
+  eq(new Game(base).check(3, 5, 5, 5).code, 'shielded');
+  ok(new Game({ ...base, rules: { protect: false } }).check(3, 5, 5, 5).ok);
+});
+
+test('protection lasts until the owner moves again with four players', () => {
+  const g = new Game(null, { players: 4, perPlayer: 12 });
+  g.play(3, 9, 5, 9); // p0, turn 1
+  const e = [...g.edges.values()].find((x) => x.ax === 3 && x.bx === 5);
+  for (let p = 1; p <= 3; p++) { eq(g.player, p); ok(g.isShielded(e), `protected on player ${p}'s turn`); g.pass(); g.pass(); }
+  eq(g.player, 0);
+  g.pass(); g.pass();
+  eq(g.player, 1);
+  ok(!g.isShielded(e), 'not after the owner moved again');
+});
+
+test('border walls: the board edge closes area, the largest region stays outside', () => {
+  const g = new Game({ edges: [[BLUE, 0, 9, 3, 9], [BLUE, 3, 9, 3, 12], [RED, 15, 9, 18, 9]], turn: 3, rules: { border: true } });
+  eq(g.areas[BLUE], 0);
+  const r = g.check(3, 12, 0, 12);
+  ok(r.ok && r.closes);
+  g.play(3, 12, 0, 12);
+  eq(g.areas[BLUE], 9, 'square against the left side');
+  near(oracleArea(g.edgesOf(BLUE).map((e) => [e.ax, e.ay, e.bx, e.by]), 19), 9);
+  near(analyzeArea([[0, 4, 3, 4], [3, 4, 6, 4], [6, 4, 9, 4], [9, 4, 12, 4], [12, 4, 15, 4], [15, 4, 18, 4]], false, 19).area, 72, 'a wall across the board keeps the smaller side');
+  near(oracleArea([[0, 4, 3, 4], [3, 4, 6, 4], [6, 4, 9, 4], [9, 4, 12, 4], [12, 4, 15, 4], [15, 4, 18, 4]], 19), 72);
+});
+
+test('timeout per edge and skipping a whole turn when stuck', () => {
+  const g = new Game(null, { timeout: 'edge' });
+  g.pass();
+  g.play(15, 9, 13, 9);
+  g.timeout();
+  eq(g.player, BLUE, 'second red edge skipped');
+  const e = g.edgesOf(RED).find((x) => x.bx === 13 || x.ax === 13);
+  ok(g.isShielded(e), 'per-edge timeout keeps protection');
+  const h = new Game(null, { stuck: 'turn' });
+  h.pass();
+  eq(h.player, RED);
+  h.pass();
+  eq(h.player, BLUE, 'a stuck pass skips the rest of the turn');
+  eq(h.placed, 3);
+});
+
+test('handicap edges come in the first turn', () => {
+  const g = new Game(null, { handicap: [0, 2] });
+  eq(g.left, 1);
+  g.pass();
+  eq(g.player, RED); eq(g.left, 4);
+  eq(g.totalEdges, 122);
+  const h = new Game(null, { handicap: [2, 0] });
+  eq(h.left, 3);
+});
+
+test('positions round trip through their code, keeping protection', () => {
+  const g = new Game(null, { players: 3, perPlayer: 20 });
+  g.play(3, 9, 5, 7); g.play(15, 9, 13, 7); g.play(13, 7, 12, 9); g.play(9, 3, 11, 4); g.play(11, 4, 12, 2);
+  g.play(5, 7, 6, 5);
+  const code = encodePosition(g);
+  const h = new Game(decodePosition(code));
+  eq(h.player, g.player); eq(h.turn, g.turn); eq(h.left, g.left);
+  eq(h.edges.size, g.edges.size);
+  eq(h.areas.join(), g.areas.join());
+  for (const e of g.edges.values()) {
+    const f = [...h.edges.values()].find((x) => x.ax === e.ax && x.ay === e.ay && x.bx === e.bx && x.by === e.by && x.owner === e.owner);
+    ok(f, 'edge kept');
+    eq(h.isShielded(f), g.isShielded(e), `protection of ${e.ax},${e.ay}-${e.bx},${e.by}`);
+    eq(h.isFresh(f), g.isFresh(e), 'freshness');
+  }
+  h.play(6, 5, 8, 4);
+  g.play(6, 5, 8, 4);
+  for (const e of g.edges.values()) {
+    const f = [...h.edges.values()].find((x) => x.ax === e.ax && x.ay === e.ay && x.bx === e.bx && x.by === e.by && x.owner === e.owner);
+    eq(h.isShielded(f), g.isShielded(e), 'protection after the turn ends');
+  }
+});
+
 // ------------------------------------------------- oracles and random games
 
 // Independent area oracle: vertical slab decomposition plus a flood fill
-// from the outside. Shares no code with analyzeArea.
-function oracleArea(segs) {
-  if (!segs.length) return 0;
+// from the outside. Shares no code with analyzeArea. With border > 0 the
+// board's sides are walls and the largest region on the board is outside.
+function oracleArea(segsIn, border = 0) {
+  if (!segsIn.length) return 0;
+  const B = border - 1;
+  const segs = border ? [...segsIn, [0, 0, B, 0], [B, 0, B, B], [B, B, 0, B], [0, B, 0, 0]] : segsIn;
   const xs = new Set();
   for (const [ax, , bx] of segs) { xs.add(ax); xs.add(bx); }
   for (let i = 0; i < segs.length; i++) {
@@ -335,21 +484,31 @@ function oracleArea(segs) {
     const right = k === slabs.length ? outside : slabs[k].regs.map((r) => ({ id: r.id, iv: interval(r, x) }));
     boundaryLinks(left, right, x);
   }
-  const seen = new Set([0]);
-  const queue = [0];
-  while (queue.length) {
-    const a = queue.pop();
-    for (const b of adj.get(a) || []) if (!seen.has(b)) { seen.add(b); queue.push(b); }
-  }
-  let area = 0;
+  // Label every region with its connected component.
+  const comp = new Map();
+  const label = (start, c) => {
+    const queue = [start];
+    comp.set(start, c);
+    while (queue.length) {
+      const a = queue.pop();
+      for (const b of adj.get(a) || []) if (!comp.has(b)) { comp.set(b, c); queue.push(b); }
+    }
+  };
+  label(0, 0);
+  const compArea = new Map();
   for (const s of slabs) {
     for (const r of s.regs) {
-      if (r.id === 0 || seen.has(r.id)) continue;
+      if (r.id === 0) continue;
+      if (!comp.has(r.id)) label(r.id, r.id);
+      const c = comp.get(r.id);
+      if (c === 0) continue;
       const [l0, h0] = interval(r, s.x0), [l1, h1] = interval(r, s.x1);
-      area += (s.x1 - s.x0) * ((h0 - l0) + (h1 - l1)) / 2;
+      compArea.set(c, (compArea.get(c) || 0) + (s.x1 - s.x0) * ((h0 - l0) + (h1 - l1)) / 2);
     }
   }
-  return area;
+  let total = 0, largest = 0;
+  for (const a of compArea.values()) { total += a; largest = Math.max(largest, a); }
+  return border ? total - largest : total;
 }
 
 test('oracle agrees on the fixed shapes', () => {
@@ -361,11 +520,15 @@ test('oracle agrees on the fixed shapes', () => {
 
 // Independent legality check written straight from the rules.
 function slowCheck(g, fx, fy, tx, ty) {
-  const me = g.player, op = 1 - me;
+  const me = g.player, R = g.rules, S = R.size;
+  const side = (p) => (R.teams ? p % 2 : p);
   if (!g.hasNode(me, fx, fy)) return 'notyours';
-  if (tx < 0 || ty < 0 || tx >= N || ty >= N) return 'board';
-  if (Math.abs(tx - fx) > 3 || Math.abs(ty - fy) > 3 || (fx === tx && fy === ty)) return 'range';
-  const mine = g.edgesOf(me), theirs = g.edgesOf(op);
+  if (tx < 0 || ty < 0 || tx >= S || ty >= S) return 'board';
+  if (Math.abs(tx - fx) > R.radius || Math.abs(ty - fy) > R.radius || (fx === tx && fy === ty)) return 'range';
+  const all = [...g.edges.values()];
+  const mine = all.filter((e) => e.owner === me);
+  const allies = all.filter((e) => e.owner !== me && side(e.owner) === side(me));
+  const theirs = all.filter((e) => side(e.owner) !== side(me));
   const toIsNode = g.hasNode(me, tx, ty);
   if (!toIsNode && mine.some((e) => pointOnSegment(e.ax, e.ay, e.bx, e.by, tx, ty))) return 'onown';
   for (const [x, y] of g.nodesOf(me)) {
@@ -373,22 +536,38 @@ function slowCheck(g, fx, fy, tx, ty) {
     if (pointOnSegment(fx, fy, tx, ty, x, y)) return 'throughown';
   }
   if (mine.some((e) => (e.ax === fx && e.ay === fy && e.bx === tx && e.by === ty) || (e.bx === fx && e.by === fy && e.ax === tx && e.ay === ty))) return 'dup';
+  if (allies.some((e) => segmentsTouch(fx, fy, tx, ty, e.ax, e.ay, e.bx, e.by))) return 'ally';
   const hits = theirs.filter((e) => segmentsTouch(fx, fy, tx, ty, e.ax, e.ay, e.bx, e.by));
   if (hits.length > 1) return 'double';
-  if (hits.length === 1 && hits[0].shield === g.turn) return 'shielded';
+  // Protected: placed during its owner's latest turn, unless that turn timed out.
+  if (hits.length === 1 && R.protect && hits[0].turn > 0 && !hits[0].noShield && hits[0].turn === lastTurnOf(g, hits[0].owner)) return 'shielded';
   return 'ok';
 }
 
-function invariants(g) {
-  const blue = g.edgesOf(BLUE), red = g.edgesOf(RED);
-  for (const b of blue) for (const r of red) {
-    if (segmentsTouch(b.ax, b.ay, b.bx, b.by, r.ax, r.ay, r.bx, r.by)) throw new Error('blue and red edges touch');
+// The turn number of a player's latest turn, worked out from the move list.
+function lastTurnOf(g, pl) {
+  if (g.player === pl) return g.turn;
+  let t = g.turn, last = 0;
+  // Walk back through the timeline of finished turns.
+  for (let i = g.timeline.length - 1; i >= 0; i--) {
+    if (g.timeline[i].player === pl) { last = g.timeline[i].turn; break; }
   }
-  for (const pl of [BLUE, RED]) {
-    const es = pl === BLUE ? blue : red;
-    const deg = new Uint8Array(N * N);
+  void t;
+  return last;
+}
+
+function invariants(g) {
+  const all = [...g.edges.values()];
+  for (let i = 0; i < all.length; i++) for (let j = i + 1; j < all.length; j++) {
+    const a = all[i], b = all[j];
+    if (a.owner !== b.owner && segmentsTouch(a.ax, a.ay, a.bx, a.by, b.ax, b.ay, b.bx, b.by)) throw new Error(`players ${a.owner} and ${b.owner} touch`);
+  }
+  const S = g.rules.size;
+  for (let pl = 0; pl < g.NP; pl++) {
+    const es = all.filter((e) => e.owner === pl);
+    const deg = new Uint8Array(S * S);
     for (const e of es) { deg[e.a]++; deg[e.b]++; }
-    for (let p = 0; p < N * N; p++) if (deg[p] !== g.deg[pl][p]) throw new Error('degree table out of sync');
+    for (let p = 0; p < S * S; p++) if (deg[p] !== g.deg[pl][p]) throw new Error('degree table out of sync');
     for (const [x, y] of g.nodesOf(pl)) {
       for (const e of es) {
         const end = (e.ax === x && e.ay === y) || (e.bx === x && e.by === y);
@@ -396,10 +575,11 @@ function invariants(g) {
       }
     }
     const segs = es.map((e) => [e.ax, e.ay, e.bx, e.by]);
-    const fast = analyzeArea(segs).area;
+    const border = g.rules.border ? S : 0;
+    const fast = analyzeArea(segs, false, border).area;
     if (Math.abs(fast - g.areas[pl]) > 1e-6) throw new Error(`cached area ${g.areas[pl]} vs fresh ${fast}`);
-    const slow = oracleArea(segs);
-    if (Math.abs(fast - slow) > 1e-6) throw new Error(`area ${fast} vs oracle ${slow} for ${JSON.stringify(segs)}`);
+    const slow = oracleArea(segs, border);
+    if (Math.abs(fast - slow) > 1e-6) throw new Error(`area ${fast} vs oracle ${slow} (border ${border}) for ${JSON.stringify(segs)}`);
   }
 }
 
@@ -410,7 +590,7 @@ function randomPolicy(g, legal, rand) {
   const closing = legal.filter((m) => m.closes);
   if (closing.length && rand() < 0.4) return closing[Math.floor(rand() * closing.length)];
   if (rand() < 0.5) {
-    const enemy = g.nodesOf(1 - g.player);
+    const enemy = g.enemiesOf(g.player).flatMap((q) => g.nodesOf(q));
     const dist = (m) => Math.min(...enemy.map(([x, y]) => Math.max(Math.abs(x - m.tx), Math.abs(y - m.ty))));
     const best = legal.map((m) => [dist(m) + rand() * 2, m]).sort((a, b) => a[0] - b[0]).slice(0, 12);
     return best[Math.floor(rand() * best.length)][1];
@@ -423,18 +603,18 @@ function rng(seed) {
   return () => { s = (s * 1664525 + 1013904223) >>> 0; return s / 4294967296; };
 }
 
-test('random games: legality matches the slow check, invariants hold, replay matches', () => {
-  const games = Number(process.env.GAMES || 30);
+function randomGames(games, rules, seedBase = 7919) {
   let moves = 0, breaks = 0, closes = 0, maxArea = 0;
   for (let seed = 1; seed <= games; seed++) {
-    const rand = rng(seed * 7919);
-    const g = new Game();
+    const rand = rng(seed * seedBase);
+    const g = new Game(null, rules);
+    const Rr = g.rules.radius;
     while (!g.over) {
       // Compare every candidate around a few nodes with the slow check.
       const nodes = g.nodesOf(g.player);
-      for (let k = 0; k < 3; k++) {
+      for (let k = 0; k < 3 && nodes.length; k++) {
         const [fx, fy] = nodes[Math.floor(rand() * nodes.length)];
-        for (let dy = -3; dy <= 3; dy++) for (let dx = -3; dx <= 3; dx++) {
+        for (let dy = -Rr; dy <= Rr; dy++) for (let dx = -Rr; dx <= Rr; dx++) {
           if (!dx && !dy) continue;
           const tx = fx + dx, ty = fy + dy;
           const a = g.check(fx, fy, tx, ty);
@@ -450,16 +630,46 @@ test('random games: legality matches the slow check, invariants hold, replay mat
       moves++;
       if (r.broke) breaks++;
       if (m.closes) closes++;
-      maxArea = Math.max(maxArea, g.areas[0], g.areas[1]);
+      maxArea = Math.max(maxArea, ...g.areas);
       if (rand() < 0.02 && !g.over) g.timeout();
       invariants(g);
     }
-    const replay = Game.fromHistory(decodeHistory(encodeHistory(g.history)));
+    const r2 = decodeRules(encodeRules(g.rules));
+    const replay = Game.fromHistory(decodeHistory(encodeHistory(g.history, r2), r2), null, r2);
     eq(replay.scores.join(), g.scores.join(), 'replayed scores');
     eq(replay.edges.size, g.edges.size, 'replayed edges');
+    eq(g.placed, g.totalEdges, 'all edges used');
   }
+  return { moves, breaks, closes, maxArea };
+}
+
+test('random games: legality matches the slow check, invariants hold, replay matches', () => {
+  const games = Number(process.env.GAMES || 30);
+  const { moves, breaks, closes, maxArea } = randomGames(games, null);
   ok(breaks > games * 3 && closes > games * 3, `games too quiet: ${breaks} breaks, ${closes} closes`);
   console.log(`   random games: ${moves} edges, ${breaks} breaks, ${closes} closing moves, largest area ${maxArea}`);
+});
+
+const VARIANTS = [
+  { size: 13, perPlayer: 30 },
+  { radius: 2, perPlayer: 30 },
+  { radius: 4, perPlayer: 30 },
+  { players: 3, perPlayer: 25 },
+  { players: 4, perPlayer: 20 },
+  { players: 4, teams: true, perPlayer: 20 },
+  { protect: false, perPlayer: 30 },
+  { border: true, perPlayer: 40 },
+  { border: true, size: 13, players: 4, perPlayer: 15 },
+  { timeout: 'edge', stuck: 'turn', perPlayer: 30 },
+  { handicap: [0, 3], perPlayer: 30 },
+];
+
+test('random games under every rule variant', () => {
+  const games = Number(process.env.VGAMES || 4);
+  for (const v of VARIANTS) {
+    const r = randomGames(games, v, 104729);
+    ok(r.moves > 0, JSON.stringify(v));
+  }
 });
 
 test('loss estimates match removing the edge', () => {
@@ -554,6 +764,173 @@ test('every puzzle solution reaches the stated best swing', () => {
     near(v, p.best, 1e-6, 'solution swing');
   }
 });
+
+test('guide positions are valid, tasks can be solved, and wrong answers fail', () => {
+  for (const ch of CHAPTERS) {
+    for (const d of ch.diagrams) {
+      eq(validateEdges(d.base.edges.map((e) => e.slice(0, 5)), d.base.rules || {}), null, `${ch.id} diagram`);
+    }
+    for (const t of ch.tasks) {
+      eq(validateEdges(t.base.edges.map((e) => e.slice(0, 5)), t.base.rules || {}), null, `${ch.id} task`);
+      const g0 = new Game(t.base);
+      eq(g0.player, BLUE, `${ch.id} blue to move`);
+      let solved = 0, failed = 0;
+      for (const m1 of g0.legalMoves()) {
+        const g1 = g0.clone();
+        const r1 = g1.check(m1.fx, m1.fy, m1.tx, m1.ty);
+        const e1 = g1.play(m1.fx, m1.fy, m1.tx, m1.ty);
+        if (t.check(g1, e1, g0, r1)) { solved++; continue; }
+        if (g1.player !== BLUE) { failed++; continue; }
+        for (const m2 of g1.legalMoves().slice(0, 400)) {
+          const g2 = g1.clone();
+          const r2 = g2.check(m2.fx, m2.fy, m2.tx, m2.ty);
+          const e2 = g2.play(m2.fx, m2.fy, m2.tx, m2.ty);
+          if (t.check(g2, e2, g0, r2)) solved++; else failed++;
+        }
+        if (solved && failed > 50) break;
+      }
+      ok(solved > 0, `${ch.id} task can't be solved`);
+      ok(failed > 0, `${ch.id} task can't be failed`);
+    }
+  }
+});
+
+test('guide claims: the cells diagram cut, the protected wall, the sealed cells', () => {
+  const by = (id) => CHAPTERS.find((c) => c.id === id).diagrams[0];
+  const cells = new Game(by('cells').base);
+  const r = cells.check(4, 1, 4, 4);
+  ok(r.ok && r.breaks, 'red cuts the top wall');
+  const c2 = cells.clone(); c2.play(4, 1, 4, 4);
+  eq(cells.areas[BLUE] - c2.areas[BLUE], 4.5, 'only one triangle opens');
+  eq(new Game(by('timing').base).check(7, 6, 4, 7).code, 'shielded');
+  const sealed = new Game(by('sealed').base);
+  eq(sealed.check(5, 2, 4, 5).code, 'double');
+  // Red nodes everywhere around the sealed block still can't break it.
+  const edges = by('sealed').base.edges.filter((e) => e[0] === BLUE);
+  const ring = [];
+  for (let x = 1; x <= 7; x++) for (const y of [1, 2, 7, 8]) ring.push([RED, x, y, x, y === 1 || y === 7 ? y + 1 : y + 1]);
+  const h = new Game({ edges: [...edges, [RED, 1, 1, 2, 1], [RED, 6, 1, 7, 2], [RED, 1, 7, 2, 8], [RED, 7, 7, 6, 8], [RED, 0, 4, 1, 3], [RED, 8, 4, 7, 3], [RED, 0, 6, 1, 6], [RED, 8, 6, 7, 7]], turn: 4, rules: { protect: false } });
+  void ring;
+  const blue = h.edgesOf(BLUE);
+  ok(blue.every((e) => !aiCanBreak(h, e, h.nodesOf(RED))), 'no red edge breaks a lattice-free cell');
+  eq(breakableBlueWalls(h).length, 0);
+});
+
+test('the home page intro plays legal edges and its captions are true', () => {
+  const g = new Game();
+  for (const step of INTRO) for (const [fx, fy, tx, ty] of step.moves) g.play(fx, fy, tx, ty);
+  const h = new Game();
+  INTRO.slice(0, 3).forEach((st) => st.moves.forEach((m) => h.play(...m)));
+  eq(h.areas[RED], 3, 'Red holds 3');
+  eq(g.areas[RED], 0, "Red's loop is open again");
+  eq(g.history.length, 9);
+});
+
+test('lattice-free cells can never be broken, from any red node', () => {
+  // A 2 x 1 block of half-square triangles. Try every red edge from every
+  // nearby point that doesn't already touch blue.
+  const blue = [[3, 4, 4, 4], [4, 4, 4, 5], [4, 5, 3, 5], [3, 5, 3, 4], [3, 4, 4, 5], [4, 4, 5, 4], [5, 4, 5, 5], [5, 5, 4, 5], [4, 4, 5, 5]];
+  let tried = 0;
+  for (let x = 0; x <= 8; x++) for (let y = 0; y <= 9; y++) {
+    if (x >= 3 && x <= 5 && y >= 4 && y <= 5) continue;
+    const g = new Game({ edges: [...blue.map((e) => [BLUE, ...e]), [RED, x, y, x === 0 ? 1 : x - 1, y]], turn: 4, rules: { protect: false } });
+    if ([...g.edges.values()].some((e) => e.owner === RED && blue.some((b) => segmentsTouch(e.ax, e.ay, e.bx, e.by, ...b)))) continue;
+    for (const m of g.legalMoves()) { ok(!m.breaks, `red ${m.fx},${m.fy}->${m.tx},${m.ty} broke a sealed wall`); tried++; }
+  }
+  ok(tried > 1000);
+});
+
+test('tournament pairing follows the double-elimination rules', () => {
+  const players = Array.from({ length: 7 }, (_, i) => ({ id: `p${i}` }));
+  const losses = { p0: 1, p1: 1, p2: 2, p3: 0, p4: 0, p5: 0, p6: 1 };
+  const r = pairRound(players, losses, {}, new Set(), rng(5));
+  const ids = r.pairs.flat();
+  ok(!ids.includes('p2'), 'two losses are out');
+  for (const [a, b] of r.pairs) ok((losses[a] || 0) === (losses[b] || 0) || r.byes.length === 0, 'groups play inside themselves');
+  eq(ids.length + r.byes.length, 6);
+  // Both groups odd: the two left over play each other instead of byes.
+  const r2 = pairRound(players.slice(3), { p3: 0, p4: 0, p5: 0, p6: 1 }, {}, new Set(), rng(9));
+  eq(r2.byes.length, 0); eq(r2.pairs.length, 2);
+  // A bye never goes to someone who already had one, when it can be avoided.
+  for (let s = 1; s < 30; s++) {
+    const r3 = pairRound(players.slice(0, 3), { p0: 0, p1: 0, p2: 0 }, { p0: true, p1: true }, new Set(), rng(s));
+    eq(r3.byes.join(), 'p2');
+  }
+  // The final: one player with no losses, one with one.
+  const r4 = pairRound([{ id: 'a' }, { id: 'b' }], { a: 0, b: 1 }, {}, new Set(), rng(1));
+  eq(r4.pairs.length, 1); eq(r4.byes.length, 0);
+});
+
+test('GIF encoder output decodes back to the same pixels', () => {
+  const W = 37, H = 23;
+  const palette = Array.from({ length: 256 }, (_, i) => [i, 255 - i, (i * 7) & 255]);
+  const frames = [0, 1, 2].map((f) => Uint8Array.from({ length: W * H }, (_, i) => ((i * (f + 3)) ^ (i >> 4)) & 255));
+  const bytes = encodeGif(W, H, frames, palette, [10, 10, 50]);
+  const back = decodeGif(bytes);
+  eq(back.width, W); eq(back.height, H); eq(back.frames.length, 3);
+  for (let f = 0; f < 3; f++) ok(back.frames[f].every((v, i) => v === frames[f][i]), `frame ${f}`);
+  // A long run that fills the code table and forces a clear code.
+  const big = Uint8Array.from({ length: 200 * 200 }, (_, i) => (i * 2654435761 >>> 24) & 255);
+  const b2 = decodeGif(encodeGif(200, 200, [big], palette, [10]));
+  ok(b2.frames[0].every((v, i) => v === big[i]), 'large frame');
+});
+
+// Minimal GIF decoder for the test above (global palette, full frames).
+function decodeGif(b) {
+  let p = 6;
+  const rd16 = () => { const v = b[p] | (b[p + 1] << 8); p += 2; return v; };
+  const width = rd16(), height = rd16();
+  const packed = b[p]; p += 3;
+  if (packed & 0x80) p += 3 * (2 << (packed & 7));
+  const frames = [];
+  while (p < b.length) {
+    const t = b[p++];
+    if (t === 0x3b) break;
+    if (t === 0x21) { p++; while (b[p]) p += b[p] + 1; p++; continue; }
+    if (t === 0x2c) {
+      p += 8;
+      const lp = b[p++];
+      if (lp & 0x80) p += 3 * (2 << (lp & 7));
+      const minCode = b[p++];
+      const data = [];
+      while (b[p]) { const n = b[p++]; for (let i = 0; i < n; i++) data.push(b[p++]); }
+      p++;
+      frames.push(lzwDecode(data, minCode, width * height));
+    }
+  }
+  return { width, height, frames };
+}
+
+function lzwDecode(data, minCode, n) {
+  const clear = 1 << minCode, eoi = clear + 1;
+  let size = minCode + 1, dict = [], next = eoi + 1, prev = null;
+  const reset = () => { dict = []; for (let i = 0; i < clear; i++) dict[i] = [i]; size = minCode + 1; next = eoi + 1; prev = null; };
+  reset();
+  const out = [];
+  let bitPos = 0;
+  const read = () => {
+    let v = 0;
+    for (let i = 0; i < size; i++) {
+      const byte = data[(bitPos + i) >> 3];
+      v |= ((byte >> ((bitPos + i) & 7)) & 1) << i;
+    }
+    bitPos += size;
+    return v;
+  };
+  while (out.length < n) {
+    const code = read();
+    if (code === clear) { reset(); continue; }
+    if (code === eoi) break;
+    let entry;
+    if (code < next && dict[code]) entry = dict[code];
+    else if (code === next && prev) entry = [...prev, prev[0]];
+    else throw new Error('bad code');
+    out.push(...entry);
+    if (prev && next < 4096) { dict[next++] = [...prev, entry[0]]; if (next === (1 << size) && size < 12) size++; }
+    prev = entry;
+  }
+  return Uint8Array.from(out);
+}
 
 // ----------------------------------------------------------- computer player
 

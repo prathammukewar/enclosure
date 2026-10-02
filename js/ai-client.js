@@ -32,21 +32,23 @@ export class AIClient {
     return this.worker;
   }
 
-  async local(game, level, seed) {
+  async local(game, level, seed, opts) {
     const { planTurn } = await import('./ai.js');
+    const { bookMove } = await import('./book.js');
     await new Promise((r) => setTimeout(r, 30));
-    return planTurn(game.clone(), level, seed);
+    return planTurn(game.clone(), level, seed, { ...opts, book: opts.book === false ? null : bookMove });
   }
 
-  // Resolves with a list of moves for the rest of the current turn.
-  think(game, level, seed = Date.now()) {
+  // Resolves with a list of moves for the rest of the current turn (or, with
+  // opts.explain, with { plan, options }).
+  think(game, level, seed = Date.now(), opts = {}) {
     const w = this.ensure();
-    if (!w) return this.local(game, level, seed);
+    if (!w) return this.local(game, level, seed, opts);
     const id = this.next++;
     return new Promise((resolve, reject) => {
-      this.pending.set(id, { resolve, reject, fallback: () => this.local(game, level, seed).then(resolve, reject) });
+      this.pending.set(id, { resolve, reject, fallback: () => this.local(game, level, seed, opts).then(resolve, reject) });
       const history = game.history.map(({ kind, fx, fy, tx, ty, player }) => ({ kind, fx, fy, tx, ty, player }));
-      w.postMessage({ id, history, base: game.base, level, seed });
+      w.postMessage({ id, history, base: game.base, rules: game.rules, level, seed, opts });
     });
   }
 

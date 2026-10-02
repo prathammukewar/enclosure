@@ -91,9 +91,17 @@ export function roundArea(a) {
 // segs: array of [ax, ay, bx, by] integer segments belonging to one player.
 // Returns the total enclosed area, the bounded faces for drawing, and for
 // each input segment the area that would be lost if only it were removed.
-export function analyzeArea(segs, wantLoss = false) {
+//
+// border (optional) is the board size for the variant where the edge of the
+// board works as a wall: the board's sides join the player's edges, the
+// largest open region of the board is the outside, and the rest counts.
+export function analyzeArea(segsIn, wantLoss = false, border = 0) {
+  const n0 = segsIn.length;
+  const empty = { area: 0, faces: [], loss: wantLoss ? new Float64Array(n0) : null, opens: wantLoss ? Array.from({ length: n0 }, () => []) : null };
+  if (border && n0 === 0) return empty;
+  const B = border - 1;
+  const segs = border ? [...segsIn, [0, 0, B, 0], [B, 0, B, B], [B, B, 0, B], [0, B, 0, 0]] : segsIn;
   const n = segs.length;
-  const empty = { area: 0, faces: [], loss: wantLoss ? new Float64Array(n) : null, opens: wantLoss ? Array.from({ length: n }, () => []) : null };
   if (n < 2) return empty;
 
   // 1. Split points along every segment (parameter t in [0, 1]).
@@ -148,6 +156,7 @@ export function analyzeArea(segs, wantLoss = false) {
   const heFrom = [], heTo = [], heDx = [], heDy = [];
   const edgeIndex = new Map();
   const segSubEdges = new Array(n);
+  const borderSub = new Set();
   for (let i = 0; i < n; i++) {
     const [ax, ay, bx, by] = segs[i];
     const list = splits[i].sort((a, b) => a.t - b.t);
@@ -165,6 +174,7 @@ export function analyzeArea(segs, wantLoss = false) {
           heDx.push(bx - ax, ax - bx); heDy.push(by - ay, ay - by);
         }
         subs.push(e);
+        if (i >= n0) borderSub.add(e);
       }
       prev = v;
     }
@@ -213,6 +223,10 @@ export function analyzeArea(segs, wantLoss = false) {
     faceArea.push(twice / 2);
     faceComp.push(find(heFrom[h0]));
     facePts.push(pts);
+  }
+
+  if (border) {
+    return borderResult({ n0, B, vIndex, vx, vy, V, find, faceArea, faceComp, facePts, faceOf, segSubEdges, borderSub, wantLoss });
   }
 
   // 6. Enclosed area per component, then drop components nested inside another.
@@ -290,5 +304,89 @@ export function analyzeArea(segs, wantLoss = false) {
     }
   }
 
+  return { area: roundArea(area), faces, loss, opens };
+}
+
+// The border-wall variant. The board's sides belong to one component; the
+// faces of that component split the board. The face with the most open
+// room (its area minus the loops of separate pieces sitting inside it) is
+// the outside. Everything else on the board counts.
+function borderResult(ctx) {
+  const { n0, B, vIndex, vx, vy, V, find, faceArea, faceComp, facePts, faceOf, segSubEdges, borderSub, wantLoss } = ctx;
+  const F = faceArea.length;
+  const borderComp = find(vIndex.get(ratPoint(0, 0, 1).key));
+  const compEnclosed = new Map(), compOuter = new Map();
+  for (let f = 0; f < F; f++) {
+    const c = faceComp[f];
+    if (faceArea[f] > EPS) compEnclosed.set(c, (compEnclosed.get(c) || 0) + faceArea[f]);
+    else if (!compOuter.has(c) || faceArea[f] < faceArea[compOuter.get(c)]) compOuter.set(c, f);
+  }
+  const sample = new Map();
+  for (let v = 0; v < V; v++) { const c = find(v); if (!sample.has(c)) sample.set(c, v); }
+  const free = [...compEnclosed.keys()].filter((c) => c !== borderComp);
+  const boardFaces = [];
+  for (let f = 0; f < F; f++) if (faceComp[f] === borderComp && faceArea[f] > EPS) boardFaces.push(f);
+  // Free pieces not inside another free piece, and the board face holding each.
+  const topLevel = new Set(), host = new Map();
+  for (const c of free) {
+    const v = sample.get(c);
+    const inside = free.some((d) => d !== c && compOuter.has(d) && pointInPolygon(vx[v], vy[v], facePts[compOuter.get(d)]));
+    if (inside) continue;
+    topLevel.add(c);
+    for (const f of boardFaces) if (pointInPolygon(vx[v], vy[v], facePts[f])) { host.set(c, f); break; }
+  }
+  const openArea = new Map();
+  for (const f of boardFaces) openArea.set(f, faceArea[f]);
+  for (const c of topLevel) if (host.has(c)) openArea.set(host.get(c), openArea.get(host.get(c)) - compEnclosed.get(c));
+  let L = -1;
+  for (const f of boardFaces) if (L < 0 || openArea.get(f) > openArea.get(L) + EPS) L = f;
+  const area = B * B - (L >= 0 ? openArea.get(L) : B * B);
+
+  const faces = [];
+  const faceIndex = new Int32Array(F).fill(-1);
+  for (let f = 0; f < F; f++) {
+    if (faceArea[f] <= EPS || f === L) continue;
+    const c = faceComp[f];
+    const counted = c === borderComp || (topLevel.has(c) && host.get(c) === L);
+    faceIndex[f] = faces.length;
+    faces.push({ pts: facePts[f], area: faceArea[f], nested: !counted });
+  }
+
+  let loss = null, opens = null;
+  if (wantLoss) {
+    loss = new Float64Array(n0);
+    opens = new Array(n0);
+    for (let i = 0; i < n0; i++) {
+      opens[i] = [];
+      const subs = segSubEdges[i].filter((e) => !borderSub.has(e));
+      if (!subs.length) continue;
+      const fp = new Map();
+      const root = (f) => { while (fp.has(f) && fp.get(f) !== f) f = fp.get(f); return f; };
+      for (const e of subs) {
+        const a = root(faceOf[e]), b = root(faceOf[e ^ 1]);
+        if (!fp.has(a)) fp.set(a, a);
+        if (!fp.has(b)) fp.set(b, b);
+        if (a !== b) fp.set(a, b);
+      }
+      const groups = new Map();
+      for (const f of fp.keys()) {
+        const r = root(f);
+        if (!groups.has(r)) groups.set(r, []);
+        groups.get(r).push(f);
+      }
+      const c = faceComp[faceOf[subs[0]]];
+      let lost = 0;
+      for (const fs of groups.values()) {
+        if (c === borderComp) {
+          if (!fs.includes(L)) continue;
+          for (const f of fs) if (f !== L && faceArea[f] > EPS) { lost += openArea.get(f) ?? faceArea[f]; if (faceIndex[f] >= 0) opens[i].push(faceIndex[f]); }
+        } else if (topLevel.has(c) && host.get(c) === L) {
+          if (!fs.some((f) => faceArea[f] <= EPS)) continue;
+          for (const f of fs) if (faceArea[f] > EPS) { lost += faceArea[f]; if (faceIndex[f] >= 0) opens[i].push(faceIndex[f]); }
+        }
+      }
+      loss[i] = lost;
+    }
+  }
   return { area: roundArea(area), faces, loss, opens };
 }

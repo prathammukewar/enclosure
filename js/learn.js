@@ -59,6 +59,7 @@ export class LearnView {
     $('lesson-next').disabled = !l.final;
     $('lesson-next').textContent = l.final ? 'Play the computer on Easy' : i === LESSONS.length - 1 ? 'Done' : 'Next lesson';
     $('lesson-reset').hidden = !!l.final;
+    $('lesson-done').hidden = !(l.final && LESSONS.filter((x) => !x.final).every((x) => this.done.has(x.id)));
     const s = this.app.settings;
     this.board = new Board($('lesson-board'), {
       interactive: true, coords: false, crop: l.crop, labels: s.labels, animate: s.animate, confirmTaps: s.confirmTaps,
@@ -111,6 +112,10 @@ export class LearnView {
       this.renderList();
       $('lesson-next').disabled = false;
       sfx.win();
+      if (LESSONS.filter((x) => !x.final).every((x) => this.done.has(x.id))) {
+        this.app.profile.unlock('student');
+        $('lesson-done').hidden = false;
+      }
       return;
     }
     const retry = l.retry && l.retry(g, entry);

@@ -1,0 +1,142 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Enclosure UI checks</title>
+<style>
+  :root { --ok: #15803d; --bad: #c4001b; --ink: #1e1b17; --muted: #6d665b; --paper: #f4ede1; --card: #fbf8f2; }
+  @media (prefers-color-scheme: dark) { :root { --ok: #4ade80; --bad: #ff5a6c; --ink: #e6ebf5; --muted: #95a1ba; --paper: #0b1120; --card: #121a2e; } }
+  body { font: 14px/1.5 system-ui, sans-serif; margin: 0; padding: 16px; background: var(--paper); color: var(--ink); }
+  h1 { font-size: 20px; margin: 0 0 8px; }
+  table { border-collapse: collapse; width: 100%; max-width: 900px; background: var(--card); }
+  td, th { text-align: left; padding: 4px 8px; border-bottom: 1px solid rgba(128, 128, 128, 0.25); vertical-align: top; }
+  .ok { color: var(--ok); font-weight: 600; }
+  .bad { color: var(--bad); font-weight: 600; }
+  iframe { width: 1100px; max-width: 100%; height: 760px; border: 1px solid rgba(128, 128, 128, 0.4); margin-top: 12px; }
+  p { color: var(--muted); }
+</style>
+</head>
+<body>
+<h1>Enclosure UI checks</h1>
+<p>Opens every screen of the site in the frame below and checks that it shows up without script errors. Serve the project folder and open <code>test/ui.html</code>.</p>
+<p id="summary">Running…</p>
+<table><thead><tr><th>Screen</th><th>Result</th><th>Notes</th></tr></thead><tbody id="rows"></tbody></table>
+<iframe id="frame" title="Site under test"></iframe>
+<script type="module">
+const frame = document.getElementById('frame');
+const rows = document.getElementById('rows');
+const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+const errors = [];
+
+function row(name, ok, note) {
+  const tr = document.createElement('tr');
+  tr.innerHTML = `<td>${name}</td><td class="${ok ? 'ok' : 'bad'}">${ok ? 'OK' : 'FAIL'}</td><td></td>`;
+  tr.lastChild.textContent = note || '';
+  rows.appendChild(tr);
+  return ok;
+}
+
+async function load() {
+  frame.src = '../index.html#home';
+  await new Promise((r) => { frame.onload = r; });
+  const w = frame.contentWindow;
+  w.addEventListener('error', (e) => errors.push(`${e.message} (${(e.filename || '').split('/').pop()}:${e.lineno})`));
+  w.addEventListener('unhandledrejection', (e) => errors.push(String(e.reason && e.reason.message || e.reason)));
+  for (let i = 0; i < 50 && !w.app; i++) await sleep(100);
+  return w;
+}
+
+const checks = [
+  ['home', 'home', (w, d) => d.querySelector('#demo-board svg') ? '' : 'demo board missing'],
+  ['learn', 'learn', (w, d) => d.querySelector('#lesson-board svg') ? '' : 'lesson board missing'],
+  ['guide/1', 'guide', (w, d) => d.querySelector('#guide-chapter h2') ? '' : 'chapter missing'],
+  ['guide/5', 'guide', (w, d) => d.querySelectorAll('#guide-chapter svg').length >= 2 ? '' : 'diagram or task missing'],
+  ['rules', 'rules', (w, d) => d.querySelectorAll('#view-rules .mini-board svg').length >= 3 ? '' : 'diagrams missing'],
+  ['puzzles', 'puzzles', (w, d) => d.querySelectorAll('#pz-list button').length > 50 ? '' : 'puzzle list short'],
+  ['puzzles/daily', 'puzzles', (w, d) => d.querySelector('.cal-day') ? '' : 'calendar empty'],
+  ['puzzles/rush', 'puzzles', (w, d) => !d.getElementById('pz-rush').hidden ? '' : 'rush panel hidden'],
+  ['puzzles/mine', 'puzzles', () => ''],
+  ['analysis', 'analysis', (w, d) => d.querySelector('#an-board svg') ? '' : 'board missing'],
+  ['tournament', 'tournament', (w, d) => d.getElementById('tour-view').textContent.trim() ? '' : 'empty'],
+  ['you', 'you', (w, d) => d.querySelectorAll('#you-achievements .ach').length >= 20 ? '' : 'achievements missing'],
+  ['about', 'about', () => ''],
+];
+
+async function run() {
+  const w = await load();
+  const d = w.document;
+  let pass = 0, total = 0;
+  for (const [hash, view, test] of checks) {
+    const before = errors.length;
+    w.location.hash = `#${hash}`;
+    await sleep(700);
+    const active = d.querySelector('.view.active');
+    let note = active && active.id === `view-${view}` ? test(w, d) : `showed ${active ? active.id : 'nothing'}`;
+    if (errors.length > before) note = `${note} ${errors.slice(before).join('; ')}`.trim();
+    total++;
+    if (row(`#${hash}`, !note, note)) pass++;
+  }
+
+  // A quick game against the computer: one edge, then the computer answers.
+  {
+    const before = errors.length;
+    w.app.startQuick({ mode: 'ai', level: 'easy', color: 0 });
+    await sleep(500);
+    const p = w.app.play;
+    let note = '';
+    try { p.humanMove(3, 9, 5, 7); } catch (e) { note = e.message; }
+    for (let i = 0; i < 60 && p.game.player !== 0; i++) await sleep(250);
+    if (!note && p.game.history.length !== 3) note = `expected 3 edges, found ${p.game.history.length}`;
+    if (errors.length > before) note = `${note} ${errors.slice(before).join('; ')}`.trim();
+    total++;
+    if (row('play against Easy', !note, note)) pass++;
+  }
+
+  // Every tab on the play screen.
+  for (const tab of ['moves', 'chart', 'coach', 'why', 'share']) {
+    const before = errors.length;
+    d.querySelector(`#view-play .tab[data-tab="${tab}"]`).click();
+    await sleep(250);
+    const panel = d.querySelector(`#view-play .tab-panel[data-panel="${tab}"]`);
+    let note = panel && !panel.hidden && panel.textContent.trim() ? '' : 'panel empty';
+    if (errors.length > before) note = `${note} ${errors.slice(before).join('; ')}`.trim();
+    total++;
+    if (row(`play tab: ${tab}`, !note, note)) pass++;
+  }
+
+  // Overlays.
+  for (const key of ['reach', 'risk', 'weak', 'warn']) {
+    const before = errors.length;
+    const b = d.querySelector(`.show-row [data-show="${key}"]`);
+    b.click();
+    await sleep(250);
+    const on = b.getAttribute('aria-pressed') === 'true';
+    b.click();
+    let note = on ? '' : 'did not switch on';
+    if (errors.length > before) note = `${note} ${errors.slice(before).join('; ')}`.trim();
+    total++;
+    if (row(`show: ${key}`, !note, note)) pass++;
+  }
+
+  // Dialogs open and close.
+  for (const [name, open, id] of [['new game', () => w.app.openNewGame('local'), 'dlg-new'], ['settings', () => w.app.openSettings(), 'dlg-settings']]) {
+    const before = errors.length;
+    open();
+    await sleep(200);
+    const dlg = d.getElementById(id);
+    let note = dlg.open ? '' : 'did not open';
+    dlg.close();
+    if (errors.length > before) note = `${note} ${errors.slice(before).join('; ')}`.trim();
+    total++;
+    if (row(`dialog: ${name}`, !note, note)) pass++;
+  }
+
+  document.getElementById('summary').innerHTML = `<span class="${pass === total ? 'ok' : 'bad'}">${pass} of ${total} checks passed.</span>`;
+  window.result = { pass, total, errors };
+}
+
+run();
+</script>
+</body>
+</html>

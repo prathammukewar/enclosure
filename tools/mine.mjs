@@ -1,12 +1,16 @@
-// Mines puzzles: positions where the best two-edge turn is clearly better
-// than playing the best single edge and then the best follow-up.
+// Mines puzzles from computer games. Five kinds:
+//   swing  the best two-edge turn, clearly better than the greedy one
+//   gain   fence in as much as possible this turn
+//   cut    open as much enemy area as possible this turn
+//   block  with one edge left, leave the next player's best cut smallest
+//   plan   the opponent times out, so four edges in a row reach a target
+//          that two separate best turns can't
+// Answers come from js/solver.js (exact for swing, gain, cut and block). Plan
+// targets are what a beam search found, so they are a reachable bar rather
+// than a proven best; the puzzle says "at least".
 //
-// node tools/mine.mjs [games] [threads] > tools/mined.json
-//
-// The best turn is found by trying every first edge and every second edge.
-// Second-edge effects come from scoreMoves (exact gains, and enemy losses
-// that can only overestimate), then the top combinations are replayed on the
-// real engine until no remaining estimate can beat the best exact result.
+// node tools/mine.mjs [games] [threads] [kinds] > mined.json
+// kinds: comma list, default swing,gain,cut,block,plan
 
 import { Worker, isMainThread, parentPort, workerData } from 'node:worker_threads';
 import { cpus } from 'node:os';
@@ -14,16 +18,19 @@ import { cpus } from 'node:os';
 if (isMainThread) {
   const games = Number(process.argv[2] || 16);
   const threads = Math.min(games, Number(process.argv[3] || Math.max(1, cpus().length - 2)));
+  const kinds = (process.argv[4] || 'swing,gain,cut,block,plan').split(',');
+  const seed0 = Number(process.env.SEED || Date.now() % 100000);
   const out = [];
   let next = 0, done = 0;
   await new Promise((resolve) => {
     for (let t = 0; t < threads; t++) {
-      const w = new Worker(new URL(import.meta.url), { workerData: {} });
-      const feed = () => { if (next < games) w.postMessage(next++); else w.terminate(); };
+      const w = new Worker(new URL(import.meta.url), { workerData: { kinds } });
+      const feed = () => { if (next < games) w.postMessage(seed0 + next++); else w.terminate(); };
       w.on('message', (r) => {
         out.push(...r);
         done++;
-        process.stderr.write(`game ${done}/${games}: ${r.length} puzzles (total ${out.length})\n`);
+        const count = (k) => out.filter((p) => p.type === k).length;
+        process.stderr.write(`game ${done}/${games}: +${r.length} (${kinds.map((k) => `${k} ${count(k)}`).join(', ')})\n`);
         if (done === games) resolve();
         feed();
       });
@@ -34,134 +41,143 @@ if (isMainThread) {
 } else {
   const { Game, encodeHistory } = await import('../js/engine.js');
   const { planTurn, scoreMoves } = await import('../js/ai.js');
+  const { solveTurn, solveBlock } = await import('../js/solver.js');
+  const kinds = new Set(workerData.kinds);
+  const r6 = (v) => Math.round(v * 1e6) / 1e6;
 
-  const swing = (a, b, me) => (b.areas[me] - a.areas[me]) + (a.areas[1 - me] - b.areas[1 - me]);
+  const swingOf = (a, b, me) => (b.areas[me] - a.areas[me]) + (a.areas[1 - me] - b.areas[1 - me]);
 
-  const { segmentsTouch, analyzeArea } = await import('../js/geometry.js');
-  const { N, RADIUS } = await import('../js/engine.js');
-
-  // True if edge B touches edge A anywhere except A's start point.
-  function touchesBeyondStart(a, b) {
-    if (!segmentsTouch(a.fx, a.fy, a.tx, a.ty, b.fx, b.fy, b.tx, b.ty)) return false;
-    const sharesStart = (b.fx === a.fx && b.fy === a.fy) || (b.tx === a.fx && b.ty === a.fy);
-    if (!sharesStart) return true;
-    // They share A's start; they touch elsewhere only if they overlap.
-    const cross = (a.tx - a.fx) * (b.ty - b.fy) - (a.ty - a.fy) * (b.tx - b.fx);
-    if (cross !== 0) return false;
-    const ox = b.fx === a.fx && b.fy === a.fy ? b.tx : b.fx, oy = b.fx === a.fx && b.fy === a.fy ? b.ty : b.fy;
-    return (ox - a.fx) * (a.tx - a.fx) + (oy - a.fy) * (a.ty - a.fy) > 0;
+  // Plays edges for `me`, skipping the opponent's turn whenever it comes up.
+  function playPlan(g, edges) {
+    const h = g.clone();
+    const me = g.player;
+    for (const [a, b, c, d] of edges) {
+      while (h.player !== me && !h.over) h.timeout();
+      if (h.over) return null;
+      if (!h.check(a, b, c, d).ok) return null;
+      h.play(a, b, c, d);
+    }
+    return h;
   }
 
-  function solve(g) {
-    const me = g.player, op = 1 - me;
-    const combos = [];
-    const root = scoreMoves(g);
-    const rootEff = root.filter((m) => m.gain + m.loss > 1e-9);
-    const opEdges = g.edgesOf(op);
-    const opLoss = new Map();
-    {
-      const an = analyzeArea(opEdges.map((e) => [e.ax, e.ay, e.bx, e.by]), true);
-      opEdges.forEach((e, i) => opLoss.set(e.id, an.loss[i]));
-    }
-    let bestSingle = -Infinity, bestSingleMove = null;
-    for (const m1 of root) {
-      const g1 = g.clone();
-      g1.play(m1.fx, m1.fy, m1.tx, m1.ty);
-      const s1 = swing(g, g1, me);
-      if (s1 > bestSingle) { bestSingle = s1; bestSingleMove = m1; }
-      if (g1.player !== me) { combos.push({ m1, m2: null, est: s1 }); continue; }
-      combos.push({ m1, m2: 'quiet', est: s1 });
-      if (m1.breaks || m1.closes) {
-        for (const m2 of scoreMoves(g1)) {
-          const v = m2.gain + m2.loss;
-          if (v > 1e-9) combos.push({ m1, m2, est: s1 + v });
-        }
-        continue;
-      }
-      // A quiet first edge only adds a dangling edge: second edges that don't
-      // touch it keep their effect from the root position.
-      for (const m2 of rootEff) {
-        if (touchesBeyondStart(m1, m2)) continue;
-        combos.push({ m1, m2, est: s1 + m2.gain + m2.loss });
-      }
-      // Second edges that touch the new edge or its new node.
-      const segs = g1.edgesOf(me).map((e) => [e.ax, e.ay, e.bx, e.by]);
-      for (const [nx, ny] of g1.nodesOf(me)) {
-        if (Math.max(Math.abs(nx - m1.fx), Math.abs(ny - m1.fy)) > 2 * RADIUS) continue;
-        for (let dy = -RADIUS; dy <= RADIUS; dy++) for (let dx = -RADIUS; dx <= RADIUS; dx++) {
-          if (!dx && !dy) continue;
-          const tx = nx + dx, ty = ny + dy;
-          if (tx < 0 || ty < 0 || tx >= N || ty >= N) continue;
-          const m2 = { fx: nx, fy: ny, tx, ty };
-          if (!touchesBeyondStart(m1, m2)) continue;
-          const r = g1.check(nx, ny, tx, ty);
-          if (!r.ok) continue;
-          let v = r.breaks ? opLoss.get(r.breaks.id) || 0 : 0;
-          if (r.closes) v += Math.max(0, analyzeArea([...segs, [nx, ny, tx, ty]]).area - g1.areas[me]);
-          if (v > 1e-9) combos.push({ m1, m2, est: s1 + v });
+  // Beam search over four edges in a row.
+  function solvePlan(g) {
+    const me = g.player;
+    let beam = [{ edges: [], h: g.clone() }];
+    for (let depth = 0; depth < 4; depth++) {
+      const next = [];
+      for (const st of beam) {
+        const h = st.h;
+        while (h.player !== me && !h.over) h.timeout();
+        if (h.over) continue;
+        const moves = scoreMoves(h);
+        moves.sort((a, b) => (b.gain + b.loss) - (a.gain + a.loss));
+        // Effective moves, plus a sample of quiet ones that set things up.
+        const eff = moves.filter((m) => m.gain + m.loss > 1e-9).slice(0, 25);
+        const quiet = moves.filter((m) => m.gain + m.loss <= 1e-9);
+        const pick = depth < 3 ? [...eff, ...quiet.filter((_, i) => i % Math.max(1, Math.floor(quiet.length / 30)) === 0)] : eff.slice(0, 8);
+        for (const m of pick) {
+          const k = h.clone();
+          k.play(m.fx, m.fy, m.tx, m.ty);
+          const done = swingOf(g, k, me);
+          let look = 0;
+          if (depth < 3) {
+            const kk = k.clone();
+            while (kk.player !== me && !kk.over) kk.timeout();
+            if (!kk.over) for (const m2 of scoreMoves(kk)) look = Math.max(look, m2.gain + m2.loss);
+          }
+          next.push({ edges: [...st.edges, [m.fx, m.fy, m.tx, m.ty]], h: k, v: done, est: done + look * (depth < 3 ? 1 : 0) });
         }
       }
+      next.sort((a, b) => b.est - a.est);
+      beam = next.slice(0, depth === 0 ? 30 : 20);
+      if (!beam.length) return null;
     }
-    // Greedy: the best first edge on its own, then the best second edge.
-    let greedy;
-    {
-      const g1 = g.clone();
-      g1.play(bestSingleMove.fx, bestSingleMove.fy, bestSingleMove.tx, bestSingleMove.ty);
-      let top = 0;
-      if (g1.player === me) for (const m2 of scoreMoves(g1)) top = Math.max(top, m2.gain + m2.loss);
-      greedy = bestSingle + top;
+    beam.sort((a, b) => b.v - a.v);
+    const top = beam[0];
+    return { best: top.v, sol: top.edges, end: top.h };
+  }
+
+  // Two best turns in a row, the opponent timing out between them.
+  function chainedGreedy(g) {
+    const me = g.player;
+    const t1 = solveTurn(g);
+    if (!t1) return null;
+    const h = playPlan(g, t1.sol);
+    if (!h) return null;
+    while (h.player !== me && !h.over) h.timeout();
+    if (h.over) return null;
+    const t2 = solveTurn(h);
+    if (!t2) return null;
+    const end = playPlan(h, t2.sol) || h;
+    return swingOf(g, end, me);
+  }
+
+  const rec = (g, type, extra) => ({
+    type, code: encodeHistory(g.history), player: g.player, turn: g.turn, ...extra,
+  });
+
+  function tryTurnKinds(g, found) {
+    const order = ['swing', 'gain', 'cut'].filter((k) => kinds.has(k)).sort(() => Math.random() - 0.5);
+    for (const mode of order) {
+      const r = solveTurn(g, mode);
+      if (!r || !r.sol.length) continue;
+      let good;
+      if (mode === 'swing') good = r.best >= 3 && r.best - r.greedy >= 1.5;
+      else good = r.best >= 4 && (r.best - r.greedy >= 1 || (r.firsts <= 2 && r.best >= 6));
+      if (!good) continue;
+      found.push(rec(g, mode, { best: r.best, greedy: r.greedy, firsts: r.firsts, gain: r.gain, cut: r.cut, sol: r.sol }));
+      return true;
     }
-    combos.sort((a, b) => b.est - a.est);
-    let best = -Infinity, sol = null;
-    const exact = [];
-    for (const c of combos) {
-      if (c.est < best - 1e-9) break;
-      const g2 = g.clone();
-      g2.play(c.m1.fx, c.m1.fy, c.m1.tx, c.m1.ty);
-      let m2 = c.m2;
-      if (m2 === 'quiet') {
-        m2 = g2.player === me ? g2.legalMoves().find((m) => !m.breaks && !m.closes) || null : null;
-        c.m2 = m2;
-      }
-      if (m2 && g2.player === me) {
-        if (!g2.check(m2.fx, m2.fy, m2.tx, m2.ty).ok) continue;
-        g2.play(m2.fx, m2.fy, m2.tx, m2.ty);
-      }
-      if (g2.player === me) continue;
-      const v = swing(g, g2, me);
-      exact.push({ c, v });
-      if (v > best + 1e-9) { best = v; sol = c; }
-    }
-    const firstsReaching = new Set(exact.filter((x) => x.v >= best - 1e-6).map((x) => `${x.c.m1.fx},${x.c.m1.fy},${x.c.m1.tx},${x.c.m1.ty}`)).size;
-    return { best, greedy, sol, firstsReaching, combos: combos.length };
+    return false;
+  }
+
+  function tryBlock(g, found) {
+    const r = solveBlock(g);
+    if (!r || !r.sol) return false;
+    if (r.worst - r.best < 4 || r.count > Math.max(3, r.total * 0.08)) return false;
+    found.push(rec(g, 'block', { best: r.best, worst: r.worst, count: r.count, total: r.total, sol: r.sol, gain: 0, cut: 0 }));
+    return true;
+  }
+
+  function tryPlan(g, found) {
+    const greedy = chainedGreedy(g);
+    if (greedy === null) return false;
+    const p = solvePlan(g);
+    if (!p || p.best < 6 || p.best < greedy + 3) return false;
+    const me = g.player;
+    const end = playPlan(g, p.sol);
+    if (!end || Math.abs(swingOf(g, end, me) - p.best) > 1e-6) return false;
+    found.push(rec(g, 'plan', {
+      best: r6(p.best), greedy: r6(greedy), sol: p.sol, firsts: 1,
+      gain: r6(end.areas[me] - g.areas[me]), cut: r6(g.areas[1 - me] - end.areas[1 - me]),
+    }));
+    return true;
   }
 
   parentPort.on('message', (i) => {
     const levels = ['medium', 'hard'];
     const g = new Game();
     const found = [];
+    let lastTurn = -10;
     while (!g.over) {
-      if (g.left === 2 && g.placed >= 12 && g.placed <= 110 && Math.random() < 0.45) {
-        const r = solve(g);
-        if (r.best >= 3 && r.best - r.greedy >= 1.5) {
-          const me = g.player;
-          const g2 = g.clone();
-          g2.play(r.sol.m1.fx, r.sol.m1.fy, r.sol.m1.tx, r.sol.m1.ty);
-          if (r.sol.m2 && g2.player === me) g2.play(r.sol.m2.fx, r.sol.m2.fy, r.sol.m2.tx, r.sol.m2.ty);
-          const gain = g2.areas[me] - g.areas[me];
-          const cut = g.areas[1 - me] - g2.areas[1 - me];
-          found.push({
-            game: i, turn: g.turn,
-            code: encodeHistory(g.history), player: me, best: Math.round(r.best * 1e6) / 1e6,
-            greedy: Math.round(r.greedy * 1e6) / 1e6, firsts: r.firstsReaching,
-            gain: Math.round(gain * 1e6) / 1e6, cut: Math.round(cut * 1e6) / 1e6,
-            sol: [r.sol.m1, r.sol.m2].filter(Boolean).map((m) => [m.fx, m.fy, m.tx, m.ty]),
-          });
-        }
+      const mid = g.placed >= 12 && g.placed <= 112 && g.turn - lastTurn >= 3;
+      if (mid && g.left === 2 && Math.random() < 0.5) {
+        let ok = false;
+        if (kinds.has('plan') && g.placed <= 100 && Math.random() < 0.18) ok = tryPlan(g, found);
+        if (!ok) ok = tryTurnKinds(g, found);
+        if (ok) lastTurn = g.turn;
       }
       const plan = planTurn(g, levels[(i + g.turn) % 2], i * 1000 + g.turn);
-      for (const m of plan) g.apply(m);
+      for (let k = 0; k < plan.length; k++) {
+        g.apply(plan[k]);
+        // Mid-turn: a chance for a block puzzle before the second edge.
+        if (k === 0 && kinds.has('block') && !g.over && g.left === 1 && g.placed >= 12 && g.placed <= 112 && g.turn - lastTurn >= 3 && Math.random() < 0.35) {
+          if (tryBlock(g, found)) lastTurn = g.turn;
+        }
+      }
     }
+    for (const p of found) p.game = i;
     parentPort.postMessage(found);
   });
 }

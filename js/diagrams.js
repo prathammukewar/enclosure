@@ -43,11 +43,12 @@ export const DIAGRAMS = {
 };
 
 export function drawDiagram(el, name) {
-  const d = DIAGRAMS[name];
+  const d = typeof name === 'string' ? DIAGRAMS[name] : name;
   if (!d) return null;
   const board = new Board(el, { interactive: false, coords: false, crop: d.crop, labels: true, animate: false });
   const g = new Game(d.base);
   board.setGame(g);
+  if (d.overlay) board.setOverlay({ kind: d.overlay });
   if (d.select) {
     // Show the reach (and a preview) without making the diagram clickable.
     board.canMove = true;
